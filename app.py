@@ -143,16 +143,3 @@ if st.button("📥 Export Results as CSV"):
 
 st.markdown("---")
 st.caption("💡 Tip: Adjust commodity prices in the sidebar to see real-time value changes")
-
-# 1. Create a clean environment (recommended)
-python -m venv battery-env
-battery-env\Scripts\activate    # Windows
-# or: source battery-env/bin/activate   # macOS/Linux
-
-# 2. Install only what you actually need
-pip install streamlit pandas
-
-# 3. Save your code as app.py (or any name you like)
-
-# 4. Run it
-streamlit run app.py
