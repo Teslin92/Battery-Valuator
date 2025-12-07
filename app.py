@@ -1,145 +1,266 @@
 import streamlit as st
+import re
 import pandas as pd
+import yfinance as yf
 
-# Page configuration
-st.set_page_config(page_title="Battery Material Value Calculator", layout="wide")
+# --- 1. CONFIG & STOICHIOMETRY ---
+st.set_page_config(page_title="Refinery Pro (Live)", layout="wide")
+st.title("🏭 Integrated Refinery: Live Market Edition")
 
-st.title("🔋 Lithium-Ion Battery & Black Mass Value Calculator")
-st.markdown("Calculate the value of battery materials based on composition and commodity prices")
-
-# Sidebar for commodity prices
-st.sidebar.header("💰 Commodity Prices (USD/kg)")
-st.sidebar.markdown("*Update with current market prices*")
-
-prices = {
-    "Lithium (Li)": st.sidebar.number_input("Lithium (Li)", value=20.0, min_value=0.0, step=0.5),
-    "Cobalt (Co)": st.sidebar.number_input("Cobalt (Co)", value=30.0, min_value=0.0, step=0.5),
-    "Nickel (Ni)": st.sidebar.number_input("Nickel (Ni)", value=18.0, min_value=0.0, step=0.5),
-    "Manganese (Mn)": st.sidebar.number_input("Manganese (Mn)", value=2.5, min_value=0.0, step=0.1),
-    "Copper (Cu)": st.sidebar.number_input("Copper (Cu)", value=9.0, min_value=0.0, step=0.5),
-    "Aluminum (Al)": st.sidebar.number_input("Aluminum (Al)", value=2.5, min_value=0.0, step=0.1),
+# Stoichiometry
+FACTORS = {
+    "Ni_to_Sulphate": 4.48, "Co_to_Sulphate": 4.77,   
+    "Li_to_Carbonate": 5.32, "Li_to_Hydroxide": 6.05   
 }
 
-st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Payable Percentage")
-payable_pct = st.sidebar.slider("Payable %", min_value=0, max_value=100, value=85, step=5)
-st.sidebar.markdown(f"*Recycler pays {payable_pct}% of material value*")
-
-# Main content - Material composition input
-st.header("📊 Material Composition")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Input Method")
-    input_method = st.radio("Choose input method:", ["Manual Entry", "Preset Battery Types"])
-
-with col2:
-    st.subheader("Total Material Weight")
-    total_weight = st.number_input("Total weight (kg)", value=100.0, min_value=0.1, step=1.0)
-
-# Composition inputs
-composition = {}
-
-if input_method == "Manual Entry":
-    st.markdown("### Enter composition percentages:")
+# --- 2. LIVE DATA ENGINE ---
+# Added this decorator so the "Refresh" button actually works
+@st.cache_data
+def get_market_data(target_currency):
+    """
+    Fetches Live FX and Estimates Metal Prices.
+    """
+    data = {}
     
-    col1, col2, col3 = st.columns(3)
+    # A. FX RATES (Real Live Data via Yahoo)
+    try:
+        if target_currency == "USD":
+            fx = 1.0
+        else:
+            ticker = f"{target_currency}=X" 
+            # Get data
+            hist = yf.Ticker(ticker).history(period="1d")
+            if not hist.empty:
+                fx = hist['Close'].iloc[-1]
+            else:
+                fx = 1.0 # Fallback
+    except:
+        fx = 1.40 if target_currency == "CAD" else 1.0 # Fallback
     
-    with col1:
-        composition["Lithium (Li)"] = st.number_input("Lithium (%)", value=2.0, min_value=0.0, max_value=100.0, step=0.1)
-        composition["Cobalt (Co)"] = st.number_input("Cobalt (%)", value=15.0, min_value=0.0, max_value=100.0, step=0.1)
-    
-    with col2:
-        composition["Nickel (Ni)"] = st.number_input("Nickel (%)", value=20.0, min_value=0.0, max_value=100.0, step=0.1)
-        composition["Manganese (Mn)"] = st.number_input("Manganese (%)", value=10.0, min_value=0.0, max_value=100.0, step=0.1)
-    
-    with col3:
-        composition["Copper (Cu)"] = st.number_input("Copper (%)", value=8.0, min_value=0.0, max_value=100.0, step=0.1)
-        composition["Aluminum (Al)"] = st.number_input("Aluminum (%)", value=5.0, min_value=0.0, max_value=100.0, step=0.1)
+    data['FX'] = fx
 
-else:
-    battery_type = st.selectbox("Select battery type:", 
-                                ["NMC 111", "NMC 622", "NMC 811", "LFP", "NCA"])
-    
-    # Preset compositions (simplified examples - adjust with real data)
-    presets = {
-        "NMC 111": {"Lithium (Li)": 2.0, "Cobalt (Co)": 20.0, "Nickel (Ni)": 20.0, "Manganese (Mn)": 20.0, "Copper (Cu)": 8.0, "Aluminum (Al)": 5.0},
-        "NMC 622": {"Lithium (Li)": 2.5, "Cobalt (Co)": 12.0, "Nickel (Ni)": 36.0, "Manganese (Mn)": 12.0, "Copper (Cu)": 8.0, "Aluminum (Al)": 5.0},
-        "NMC 811": {"Lithium (Li)": 3.0, "Cobalt (Co)": 5.0, "Nickel (Ni)": 48.0, "Manganese (Mn)": 6.0, "Copper (Cu)": 8.0, "Aluminum (Al)": 5.0},
-        "LFP": {"Lithium (Li)": 4.0, "Cobalt (Co)": 0.0, "Nickel (Ni)": 0.0, "Manganese (Mn)": 0.0, "Copper (Cu)": 10.0, "Aluminum (Al)": 6.0},
-        "NCA": {"Lithium (Li)": 2.8, "Cobalt (Co)": 9.0, "Nickel (Ni)": 48.0, "Manganese (Mn)": 0.0, "Copper (Cu)": 8.0, "Aluminum (Al)": 5.0},
+    # B. METAL PROXIES (Base prices in USD)
+    base_prices_usd = {
+        "Ni": 16500.00,  # LME Nickel Approx
+        "Co": 33000.00,  # Fastmarkets Cobalt Approx
+        "Li": 13500.00,  # China Carbonate Spot Approx
+        "NiSO4": 3800.00, # Spot Sulphate
+        "CoSO4": 6500.00, # Spot Sulphate
+        "LCE": 14000.00,  # Carbonate Spot
+        "LiOH": 15500.00  # Hydroxide Spot
     }
-    composition = presets[battery_type]
     
-    st.info(f"**{battery_type}** composition loaded")
+    # Convert to Target Currency and kg (LME is usually per Tonne)
+    for key, price_usd_ton in base_prices_usd.items():
+        price_per_kg = (price_usd_ton / 1000.0) * fx
+        data[key] = price_per_kg
 
-# Calculations
-st.markdown("---")
-st.header("💵 Value Calculation")
+    return data
 
-total_composition = sum(composition.values())
-if total_composition > 100:
-    st.error(f"⚠️ Total composition is {total_composition:.1f}% - exceeds 100%!")
+# --- 3. PARSER ---
+def parse_coa_text(text):
+    assays = {"Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0, "Copper": 0.0, "Aluminum": 0.0, "Graphite": 0.0}
+    text = text.lower().replace(",", "") 
+    target_map = {
+        "Nickel": ["ni", "nickel"], "Cobalt": ["co", "cobalt"], "Lithium": ["li", "lithium"],
+        "Copper": ["cu", "copper"], "Aluminum": ["al", "aluminum"], "Graphite": ["graphite", "carbon", "c "]
+    }
+    for line in text.split('\n'):
+        for metal, keywords in target_map.items():
+            for kw in keywords:
+                if re.search(rf"\b{kw}", line):
+                    match = re.search(r"(\d+\.?\d*)", line.replace(kw, ""))
+                    if match:
+                        val = float(match.group(1))
+                        if val > 100: assays[metal] = val / 10000.0 / 100.0
+                        else: assays[metal] = val / 100.0
+    return assays
 
-# Calculate values
-results = []
-total_gross_value = 0
-total_payable_value = 0
+# --- 4. SIDEBAR ---
 
-for material, percentage in composition.items():
-    weight = (percentage / 100) * total_weight
-    gross_value = weight * prices[material]
-    payable_value = gross_value * (payable_pct / 100)
+# === GLOBAL SETTINGS ===
+st.sidebar.header("1. Global Settings")
+currency = st.sidebar.selectbox("Display Currency", ["CAD", "USD", "EUR", "CNY"])
+market_data = get_market_data(currency)
+
+# Show the Live Status
+st.sidebar.caption(f"**Live FX:** 1 USD = {market_data['FX']:.4f} {currency}")
+if st.sidebar.button("🔄 Refresh Market Data"):
+    st.cache_data.clear()
+
+# === UPSTREAM ===
+st.sidebar.markdown("---")
+st.sidebar.header("2. Feedstock (Buying)")
+
+batch_name = st.sidebar.text_input("Batch ID", "Lot-2025-A")
+total_weight_kg = st.sidebar.number_input(f"Total Weight (kg)", value=1000.0)
+
+st.sidebar.caption(f"**Metal Prices ({currency}/kg)**")
+
+c1, c2 = st.sidebar.columns(2)
+# No min_value or max_value set. Type whatever you want.
+ni_base = c1.number_input("Ni Price", value=float(f"{market_data['Ni']:.2f}"))
+c2.caption(f"Live: {market_data['Ni']:.2f}")
+
+c1, c2 = st.sidebar.columns(2)
+co_base = c1.number_input("Co Price", value=float(f"{market_data['Co']:.2f}"))
+c2.caption(f"Live: {market_data['Co']:.2f}")
+
+c1, c2 = st.sidebar.columns(2)
+li_base = c1.number_input("Li Price", value=float(f"{market_data['Li']:.2f}"))
+c2.caption(f"Live: {market_data['Li']:.2f}")
+
+st.sidebar.caption("**Payables (%)**")
+c1, c2, c3 = st.sidebar.columns(3)
+# These inputs take the number you type (e.g. 105) and divide by 100 for the math
+ni_pay_feed = c1.number_input("Ni Pay", value=80.0) / 100
+co_pay_feed = c2.number_input("Co Pay", value=75.0) / 100
+li_pay_feed = c3.number_input("Li Pay", value=30.0) / 100
+
+# === DOWNSTREAM ===
+st.sidebar.markdown("---")
+st.sidebar.header("3. Refining Strategy")
+ni_product = st.sidebar.selectbox("Ni/Co Product", ["Sulphates (Battery Salt)", "MHP (Intermediate)"])
+li_product = st.sidebar.selectbox("Li Product", ["Carbonate (LCE)", "Hydroxide (LiOH)"])
+
+st.sidebar.subheader(f"Sales Pricing ({currency})")
+
+# DYNAMIC PRICING INPUTS
+price_ni_sulf = 0
+price_co_sulf = 0
+mhp_pay_ni = 0
+mhp_pay_co = 0
+
+if ni_product == "Sulphates (Battery Salt)":
+    c1, c2 = st.sidebar.columns(2)
+    price_ni_sulf = c1.number_input("NiSO4 Price", value=float(f"{market_data['NiSO4']:.2f}"))
+    c2.caption(f"Ref: {market_data['NiSO4']:.2f}")
+
+    c1, c2 = st.sidebar.columns(2)
+    price_co_sulf = c1.number_input("CoSO4 Price", value=float(f"{market_data['CoSO4']:.2f}"))
+    c2.caption(f"Ref: {market_data['CoSO4']:.2f}")
+else:
+    st.sidebar.info("MHP Pricing (Payable Basis)")
+    c1, c2 = st.sidebar.columns(2)
+    c1.number_input("Ni Ref", value=ni_base, disabled=True, label_visibility="collapsed")
+    mhp_pay_ni = c2.number_input("MHP Ni Pay %", value=85.0) / 100
     
-    total_gross_value += gross_value
-    total_payable_value += payable_value
+    c1, c2 = st.sidebar.columns(2)
+    c1.number_input("Co Ref", value=co_base, disabled=True, label_visibility="collapsed")
+    mhp_pay_co = c2.number_input("MHP Co Pay %", value=80.0) / 100
+
+c1, c2 = st.sidebar.columns(2)
+if li_product == "Carbonate (LCE)":
+    price_li_salt = c1.number_input("LCE Price", value=float(f"{market_data['LCE']:.2f}"))
+    c2.caption(f"Ref: {market_data['LCE']:.2f}")
+else:
+    price_li_salt = c1.number_input("LiOH Price", value=float(f"{market_data['LiOH']:.2f}"))
+    c2.caption(f"Ref: {market_data['LiOH']:.2f}")
+
+# OPEX
+st.sidebar.markdown("---")
+refining_opex = st.sidebar.number_input(f"Refining OPEX ({currency}/MT Feed)", value=1500.0)
+rec_ni = st.sidebar.number_input("Ni Rec %", value=95.0) / 100
+rec_co = st.sidebar.number_input("Co Rec %", value=95.0) / 100
+rec_li = st.sidebar.number_input("Li Rec %", value=85.0) / 100
+
+# --- 5. MAIN APP ---
+
+# Header Metrics (Live Data)
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Selected Currency", currency)
+m2.metric("Exchange Rate", f"1 USD = {market_data['FX']:.3f} {currency}")
+m3.metric("LME Nickel (Ref)", f"{market_data['Ni']:.2f} /kg")
+m4.metric("LME Cobalt (Ref)", f"{market_data['Co']:.2f} /kg")
+
+st.divider()
+
+col_left, col_right = st.columns([1, 1])
+with col_left:
+    st.info("📋 **Paste Lab Results (CoA)**")
+    default_text = "Ni: 22.5%\nCo: 7.2%\nLi: 3.5%\nAl: 4.1%\nCu: 1.5%\nGraphite: 25%"
+    coa_text = st.text_area("Paste CoA:", height=150, value=default_text)
+
+with col_right:
+    st.success(f"🏭 **Refinery Configuration**")
+    st.write(f"**Product Path:** {ni_product} + {li_product}")
+    st.write(f"**Refining Cost:** ${refining_opex:,.0f} {currency} / Tonne")
+
+if st.button("Run Integrated Model", type="primary"):
+    assays = parse_coa_text(coa_text)
     
-    results.append({
-        "Material": material,
-        "Composition (%)": percentage,
-        "Weight (kg)": round(weight, 2),
-        "Price (USD/kg)": prices[material],
-        "Gross Value (USD)": round(gross_value, 2),
-        "Payable Value (USD)": round(payable_value, 2)
-    })
+    # === STEP 1: UPSTREAM COST ===
+    mass_ni = 1000 * assays["Nickel"]
+    mass_co = 1000 * assays["Cobalt"]
+    mass_li = 1000 * assays["Lithium"]
+    
+    cost_ni = mass_ni * ni_base * ni_pay_feed
+    cost_co = mass_co * co_base * co_pay_feed
+    cost_li = mass_li * li_base * li_pay_feed
+    bm_cost = cost_ni + cost_co + cost_li
+    
+    # === STEP 2: DOWNSTREAM REVENUE ===
+    revenue_items = []
+    total_rev = 0
+    
+    # A. Nickel & Cobalt
+    if ni_product == "Sulphates (Battery Salt)":
+        qty_ni_sulf = mass_ni * rec_ni * FACTORS["Ni_to_Sulphate"]
+        rev_ni = qty_ni_sulf * price_ni_sulf
+        revenue_items.append(["Ni Sulphate", f"{qty_ni_sulf:.1f} kg", f"${rev_ni:,.2f}"])
+        
+        qty_co_sulf = mass_co * rec_co * FACTORS["Co_to_Sulphate"]
+        rev_co = qty_co_sulf * price_co_sulf
+        revenue_items.append(["Co Sulphate", f"{qty_co_sulf:.1f} kg", f"${rev_co:,.2f}"])
+    else: # MHP
+        contained_ni_mhp = mass_ni * rec_ni
+        rev_ni = contained_ni_mhp * ni_base * mhp_pay_ni
+        revenue_items.append(["MHP (Ni Content)", f"{contained_ni_mhp:.1f} kg (Ni)", f"${rev_ni:,.2f}"])
+        
+        contained_co_mhp = mass_co * rec_co
+        rev_co = contained_co_mhp * co_base * mhp_pay_co
+        revenue_items.append(["MHP (Co Content)", f"{contained_co_mhp:.1f} kg (Co)", f"${rev_co:,.2f}"])
 
-df = pd.DataFrame(results)
+    # B. Lithium
+    if li_product == "Carbonate (LCE)":
+        qty_li = mass_li * rec_li * FACTORS["Li_to_Carbonate"]
+        rev_li = qty_li * price_li_salt
+        revenue_items.append(["Li Carbonate", f"{qty_li:.1f} kg", f"${rev_li:,.2f}"])
+    else: # Hydroxide
+        qty_li = mass_li * rec_li * FACTORS["Li_to_Hydroxide"]
+        rev_li = qty_li * price_li_salt
+        revenue_items.append(["Li Hydroxide", f"{qty_li:.1f} kg", f"${rev_li:,.2f}"])
 
-# Display results
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Gross Value", f"${total_gross_value:,.2f}")
-col2.metric("Total Payable Value", f"${total_payable_value:,.2f}")
-col3.metric("Value per kg", f"${total_payable_value/total_weight:,.2f}")
+    total_rev = rev_ni + rev_co + rev_li
+    net_profit = total_rev - bm_cost - refining_opex
 
-st.dataframe(df, use_container_width=True)
-
-# Visualization
-st.markdown("---")
-st.header("📈 Value Breakdown")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Payable Value by Material")
-    chart_data = df[["Material", "Payable Value (USD)"]].set_index("Material")
-    st.bar_chart(chart_data)
-
-with col2:
-    st.subheader("Composition by Weight")
-    chart_data = df[["Material", "Weight (kg)"]].set_index("Material")
-    st.bar_chart(chart_data)
-
-# Export option
-st.markdown("---")
-if st.button("📥 Export Results as CSV"):
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name="battery_value_calculation.csv",
-        mime="text/csv"
-    )
-
-st.markdown("---")
-st.caption("💡 Tip: Adjust commodity prices in the sidebar to see real-time value changes")
+    # === DISPLAY ===
+    st.divider()
+    
+    # Financials
+    st.subheader(f"💰 Economics ({currency} / MT)")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("1. Revenue", f"${total_rev:,.0f}")
+    c2.metric("2. Cost", f"${bm_cost:,.0f}", delta_color="inverse")
+    c3.metric("3. OPEX", f"${refining_opex:,.0f}", delta_color="inverse")
+    c4.metric("4. PROFIT", f"${net_profit:,.0f}", delta="Margin")
+    
+    st.divider()
+    
+    # Detailed Tables
+    col_up, col_down = st.columns(2)
+    with col_up:
+        st.subheader("📉 Purchasing")
+        cost_df = pd.DataFrame([
+            ["Nickel", f"{mass_ni:.1f} kg", f"${cost_ni:,.2f}"],
+            ["Cobalt", f"{mass_co:.1f} kg", f"${cost_co:,.2f}"],
+            ["Lithium", f"{mass_li:.1f} kg", f"${cost_li:,.2f}"],
+            ["**TOTAL**", "-", f"**${bm_cost:,.2f}**"]
+        ], columns=["Metal", "Content", "Cost"])
+        st.table(cost_df)
+        
+    with col_down:
+        st.subheader("📈 Revenue")
+        rev_df = pd.DataFrame(revenue_items, columns=["Product", "Volume", "Revenue"])
+        rev_df.loc[len(rev_df)] = ["**TOTAL**", "-", f"**${total_rev:,.2f}**"]
+        st.table(rev_df)
