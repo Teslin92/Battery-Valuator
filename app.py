@@ -120,7 +120,7 @@ st.sidebar.header("1. Feedstock & Pre-treatment")
 feed_type = st.sidebar.selectbox("Material Type", 
     ["Black Mass (Processed)", "Cathode Foils", "Cell Stacks / Jelly Rolls", "Whole Cells", "Modules", "Battery Packs"])
 
-has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte / Hazardous?", value=False)
+has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte", value=False)
 elec_surcharge = 0.0
 if has_electrolyte:
     elec_surcharge = st.sidebar.number_input(f"Safety & Drying Cost ({currency}/MT)", value=150.0, step=10.0)
@@ -221,7 +221,7 @@ with col_left:
         coa_text = st.text_area("Paste Lab Results", height=150, value=default_text)
 
 with col_right:
-    st.success(f"⚙️ **Process Configuration**")
+    st.success(f"**Process Configuration**")
     st.markdown(f"**Feedstock:** {gross_weight:,.0f} kg (Gross)")
     st.markdown(f"**Yield:** {yield_pct*100:.0f}% → **{net_bm_weight:,.0f} kg (Net BM)**")
     st.divider()
@@ -329,7 +329,7 @@ if st.button("Calculate Value", type="primary"):
     
     col_prod, col_chart = st.columns([1, 2])
     with col_prod:
-        st.subheader("📦 Production Schedule")
+        st.subheader("Products")
         prod_df = pd.DataFrame(production_data, columns=["Product Stream", "Output Mass (kg)", "Est. Revenue"])
         total_mass_prod = prod_df["Output Mass (kg)"].sum()
         new_row = {"Product Stream": "TOTAL", "Output Mass (kg)": total_mass_prod, "Est. Revenue": total_rev}
@@ -338,7 +338,7 @@ if st.button("Calculate Value", type="primary"):
         st.dataframe(prod_df.style.format({"Output Mass (kg)": "{:,.0f}", "Est. Revenue": "${:,.0f}"}), use_container_width=True, hide_index=True)
 
     with col_chart:
-        st.subheader("📉 Financial Split")
+        st.subheader("Financial Split")
         chart_data = pd.DataFrame({
             "Category": ["Feedstock Cost", "Pre-Treatment", "Refining", "Net Profit"],
             "Amount": [material_cost, total_pre_treat, total_refining_cost, net_profit],
