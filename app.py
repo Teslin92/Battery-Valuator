@@ -5,7 +5,7 @@ import yfinance as yf
 import altair as alt
 
 # --- 1. CONFIG & DESIGN ---
-st.set_page_config(page_title="Refinery Pro", layout="wide")
+st.set_page_config(page_title="Battery Valuator", page_icon="🔋", layout="wide")
 
 # FORCE LIGHT THEME & DARK GREEN ACCENTS
 st.markdown("""
