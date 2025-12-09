@@ -169,12 +169,11 @@ if has_electrolyte:
     )
 
 # B. Mechanical / Shredding Cost
-# This cost only exists if we need to turn cells into black mass
 shredding_cost_per_ton = 0.0
 if feed_type != "Black Mass (Processed)":
     shredding_cost_per_ton = st.sidebar.number_input(f"Mechanical/Shred Cost ({currency}/MT)", value=300.0, help="Cost to shred and separate plastics/foils.")
 
-# C. Yields
+# C. Yields & Mechanical Recovery
 defaults = {
     "Black Mass (Processed)": 100, "Cathode Foils": 90,
     "Cell Stacks / Jelly Rolls": 70, "Whole Cells": 60,
@@ -187,6 +186,16 @@ yield_pct = st.sidebar.slider(
     value=defaults[feed_type],
     help="Weight of Black Mass recovered after shredding."
 ) / 100.0
+
+# NEW: Mechanical Recovery Slider (Shredding Efficiency)
+mech_recovery = 1.0 # Default 100% if already powder
+if feed_type != "Black Mass (Processed)":
+    mech_recovery = st.sidebar.slider(
+        "Mechanical Recovery (%)",
+        min_value=80, max_value=100,
+        value=95,
+        help="Metal actually captured during shredding (vs lost to dust/waste)."
+    ) / 100.0
 
 gross_weight = st.sidebar.number_input(f"Total Gross Weight (kg)", value=1000.0)
 net_bm_weight = gross_weight * yield_pct
@@ -223,6 +232,15 @@ ni_product = st.sidebar.selectbox("Ni/Co Product", ["Sulphates (Battery Salt)", 
 li_product = st.sidebar.selectbox("Li Product", ["Carbonate (LCE)", "Hydroxide (LiOH)"])
 
 refining_opex_base = st.sidebar.number_input(f"Refining OPEX ({currency}/MT BM)", value=1500.0)
+
+# NEW: Hydromet Recovery Slider
+hydromet_recovery = st.sidebar.slider(
+    "Refining Recovery (%)",
+    min_value=80, max_value=100,
+    value=95,
+    help="Chemical efficiency of the refining process."
+) / 100.0
+
 st.sidebar.caption("Cost applied to Net Black Mass Weight only.")
 
 # Market Prices & Recoveries (Hidden Vars for cleaner UI)
@@ -231,19 +249,18 @@ price_co_sulf = market_data['CoSO4']
 price_li_salt = market_data['LCE'] if li_product == "Carbonate (LCE)" else market_data['LiOH']
 mhp_pay_ni = 0.85
 mhp_pay_co = 0.80
-rec_ni = 0.95
-rec_co = 0.95
-rec_li = 0.85
+
+# Apply the Hydromet Recovery Slider here
+rec_ni = hydromet_recovery
+rec_co = hydromet_recovery
+rec_li = hydromet_recovery * 0.90 # Lithium usually slightly lower recovery
 
 # --- 5. MAIN APP ---
 
 st.subheader(f"Feedstock: {feed_type}")
 
 # === PRE-CALCULATIONS ===
-# 1. Shredding Cost (Applied to Gross)
 cost_shred = (gross_weight / 1000.0) * shredding_cost_per_ton
-
-# 2. Electrolyte Cost (Applied to Gross)
 cost_electrolyte = 0
 if has_electrolyte:
     cost_electrolyte = (gross_weight / 1000.0) * elec_surcharge
@@ -256,7 +273,6 @@ col_left, col_right = st.columns([1, 1])
 with col_left:
     st.info("📋 **Assay Input (Lab Results)**")
     
-    # RENAMED FOR CLARITY
     assay_basis = st.radio(
         "Where did you take this sample?", 
         ["Whole Battery (Diluted Grade)", "Final Powder (Concentrated Grade)"],
@@ -282,12 +298,14 @@ with col_right:
     
     if feed_type != "Black Mass (Processed)":
         st.write(f"⚙️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
+        st.caption(f"🔻 Mechanical Recovery: {mech_recovery*100:.0f}%")
     else:
         st.write(f"⚙️ **Shredding:** Included / None")
 
     # 3. Post-Treatment
     st.markdown(f"🧪 **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
     st.caption(f"Target: {ni_product} & {li_product}")
+    st.caption(f"🔹 Chemical Recovery: {hydromet_recovery*100:.0f}%")
 
 if st.button("Calculate Value", type="primary"):
     assays = parse_coa_text(coa_text)
@@ -300,11 +318,11 @@ if st.button("Calculate Value", type="primary"):
     bm_li_grade = 0.0
     
     # LOGIC CHECK:
-    # If "Whole Battery", we keep Metal Mass constant, but Weight drops -> Grade GOES UP.
+    # If "Whole Battery", we keep Metal Mass constant, but apply Mechanical Recovery losses.
     if assay_basis == "Whole Battery (Diluted Grade)":
-        mass_ni = gross_weight * assays["Nickel"]
-        mass_co = gross_weight * assays["Cobalt"]
-        mass_li = gross_weight * assays["Lithium"]
+        mass_ni = (gross_weight * assays["Nickel"]) * mech_recovery
+        mass_co = (gross_weight * assays["Cobalt"]) * mech_recovery
+        mass_li = (gross_weight * assays["Lithium"]) * mech_recovery
         
         if net_bm_weight > 0:
             bm_ni_grade = (mass_ni / net_bm_weight) * 100
@@ -334,7 +352,7 @@ if st.button("Calculate Value", type="primary"):
     
     production_data = [] # Stores [Product Name, Mass (kg), Revenue ($)]
     
-    # Ni/Co Revenue
+    # Ni/Co Revenue (Now using Hydromet Recovery factors)
     if ni_product == "Sulphates (Battery Salt)":
         qty_ni_prod = mass_ni * rec_ni * FACTORS["Ni_to_Sulphate"]
         rev_ni = qty_ni_prod * price_ni_sulf
@@ -377,22 +395,17 @@ if st.button("Calculate Value", type="primary"):
 
     st.write("---")
     
-    # === NEW DETAILED OUTPUT SECTION ===
-    
-    # THIS WAS THE MISSING LINE:
+    # === DETAILED OUTPUT SECTION ===
     col_prod, col_chart = st.columns([1, 2])
     
     with col_prod:
         st.subheader("Products")
-        # Create a nice table showing what you actually produced
         prod_df = pd.DataFrame(production_data, columns=["Product Stream", "Output Mass (kg)", "Est. Revenue"])
         
-        # Add a total row
         total_mass_prod = prod_df["Output Mass (kg)"].sum()
         new_row = {"Product Stream": "TOTAL", "Output Mass (kg)": total_mass_prod, "Est. Revenue": total_rev}
         prod_df = pd.concat([prod_df, pd.DataFrame([new_row])], ignore_index=True)
         
-        # Format the numbers
         st.dataframe(
             prod_df.style.format({
                 "Output Mass (kg)": "{:,.0f}",
@@ -404,20 +417,16 @@ if st.button("Calculate Value", type="primary"):
 
     with col_chart:
         st.subheader("Financial Split")
-        
-        # 1. Prepare Data with a specific "Color" column
         chart_data = pd.DataFrame({
             "Category": ["Feedstock Cost", "Pre-Treatment", "Refining", "Net Profit"],
             "Amount": [material_cost, total_pre_treat, total_refining_cost, net_profit],
-            "Color": ["#FF5252", "#FF5252", "#FF5252", "#00D668"] # Red for costs, Green for profit
+            "Color": ["#FF5252", "#FF5252", "#FF5252", "#00D668"]
         })
         
-        # 2. Build Chart using Altair (enables custom colors)
         c = alt.Chart(chart_data).mark_bar().encode(
             x=alt.X('Category', sort=None), 
             y='Amount',
             color=alt.Color('Color', scale=None), 
             tooltip=['Category', 'Amount']
         )
-        
         st.altair_chart(c, use_container_width=True)
