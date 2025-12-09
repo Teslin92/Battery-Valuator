@@ -154,10 +154,10 @@ st.sidebar.markdown("---")
 st.sidebar.header("1. Feedstock & Pre-treatment")
 
 feed_type = st.sidebar.selectbox("Material Type", 
-    ["Black Mass (Processed)", "Cathode Foils", "Cell Stacks / Jelly Rolls", "Whole Cells", "Modules", "Battery Packs"])
+    ["Black Mass", "Cathode Foils", "Cell Stacks / Jelly Rolls", "Whole Cells", "Modules", "Battery Packs"])
 
 # A. Electrolyte Logic (Adjustable Cost)
-has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte / Hazardous?", value=False)
+has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte", value=False)
 elec_surcharge = 0.0
 
 if has_electrolyte:
@@ -220,7 +220,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("3. Refining (Hydromet)")
 
 ni_product = st.sidebar.selectbox("Ni/Co Product", ["Sulphates (Battery Salt)", "MHP (Intermediate)"])
-li_product = st.sidebar.selectbox("Li Product", ["Carbonate (LCE)", "Hydroxide (LiOH)"])
+li_product = st.sidebar.selectbox("Li Product", ["Carbonate (Li2CO3)", "Hydroxide (LiOH)"])
 
 refining_opex_base = st.sidebar.number_input(f"Refining OPEX ({currency}/MT BM)", value=1500.0)
 st.sidebar.caption("Cost applied to Net Black Mass Weight only.")
@@ -228,7 +228,7 @@ st.sidebar.caption("Cost applied to Net Black Mass Weight only.")
 # Market Prices & Recoveries (Hidden Vars for cleaner UI)
 price_ni_sulf = market_data['NiSO4']
 price_co_sulf = market_data['CoSO4']
-price_li_salt = market_data['LCE'] if li_product == "Carbonate (LCE)" else market_data['LiOH']
+price_li_salt = market_data['LCE'] if li_product == "Li2CO3" else market_data['LiOH']
 mhp_pay_ni = 0.85
 mhp_pay_co = 0.80
 rec_ni = 0.95
@@ -281,12 +281,12 @@ with col_right:
         st.write(f"⚠️ **Electrolyte:** ${elec_surcharge:,.0f} / ton surcharge")
     
     if feed_type != "Black Mass (Processed)":
-        st.write(f"🛠️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
+        st.write(f"⚙️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
     else:
-        st.write(f"✅ **Shredding:** Included / None")
+        st.write(f"⚙️ **Shredding:** Included / None")
 
     # 3. Post-Treatment
-    st.markdown(f"⚗️ **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
+    st.markdown(f"🧪 **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
     st.caption(f"Target: {ni_product} & {li_product}")
 
 if st.button("Calculate Value", type="primary"):
@@ -383,7 +383,7 @@ if st.button("Calculate Value", type="primary"):
     col_prod, col_chart = st.columns([1, 2])
     
     with col_prod:
-        st.subheader("📦 Production Schedule")
+        st.subheader("Final Products")
         # Create a nice table showing what you actually produced
         prod_df = pd.DataFrame(production_data, columns=["Product Stream", "Output Mass (kg)", "Est. Revenue"])
         
@@ -403,7 +403,7 @@ if st.button("Calculate Value", type="primary"):
         )
 
     with col_chart:
-        st.subheader("📉 Financial Split")
+        st.subheader("Financial Split")
         
         # 1. Prepare Data with a specific "Color" column
         chart_data = pd.DataFrame({
