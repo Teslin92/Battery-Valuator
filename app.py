@@ -10,39 +10,12 @@ st.set_page_config(page_title="Battery Valuator", page_icon="🔋", layout="wide
 # FORCE LIGHT THEME & DARK GREEN ACCENTS
 st.markdown("""
     <style>
-    /* 1. Main Background: White */
-    .stApp {
-        background-color: #FFFFFF;
-        color: #333333; /* Dark Grey Text */
-    }
-    
-    /* 2. Sidebar Background: Very Light Grey */
-    section[data-testid="stSidebar"] {
-        background-color: #F8F9FA;
-    }
-    
-    /* 3. Primary Buttons: Dark Green */
-    div.stButton > button {
-        background-color: #1B5E20; /* Dark Forest Green */
-        color: white;
-        border-radius: 8px;
-        border: none;
-        font-weight: bold;
-    }
-    div.stButton > button:hover {
-        background-color: #2E7D32; /* Slightly lighter on hover */
-        color: white;
-    }
-
-    /* 4. Metrics & Highlights: Dark Green */
-    [data-testid="stMetricValue"] {
-        color: #1B5E20;
-    }
-    
-    /* 5. Headings */
-    h1, h2, h3 {
-        color: #1B5E20; /* Headlines in Green */
-    }
+    .stApp { background-color: #FFFFFF; color: #333333; }
+    section[data-testid="stSidebar"] { background-color: #F8F9FA; }
+    div.stButton > button { background-color: #1B5E20; color: white; border-radius: 8px; border: none; font-weight: bold; }
+    div.stButton > button:hover { background-color: #2E7D32; color: white; }
+    [data-testid="stMetricValue"] { color: #1B5E20; }
+    h1, h2, h3 { color: #1B5E20; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,11 +23,9 @@ st.markdown("""
 col_logo, col_title = st.columns([2, 5]) 
 
 with col_logo:
-    # Ensure "Battery Valuator.png" is in the same folder
     try:
         st.image("Battery Valuator.png", width=350)
     except:
-        # Fallback if image is missing
         st.markdown("# 🔋") 
 
 with col_title:
@@ -67,45 +38,42 @@ FACTORS = {
     "Li_to_Carbonate": 5.32, "Li_to_Hydroxide": 6.05   
 }
 
+# --- STANDARD BATTERY LIBRARY (Approx Black Mass Grades) ---
+# NOTE: These are typical grades of the POWDER (Black Mass), not the whole cell.
+BATTERY_SPECS = {
+    "LFP (Lithium Iron Phosphate)": {"Ni": 0.0, "Co": 0.0, "Li": 4.5},
+    "NMC 111": {"Ni": 19.5, "Co": 19.5, "Li": 7.2},
+    "NMC 532": {"Ni": 26.0, "Co": 16.5, "Li": 7.3},
+    "NMC 622": {"Ni": 31.0, "Co": 10.5, "Li": 7.4},
+    "NMC 811": {"Ni": 42.0, "Co": 5.0,  "Li": 7.5},
+    "LCO (Cobalt Only)": {"Ni": 0.0, "Co": 52.0, "Li": 7.1},
+}
+
 # --- 2. LIVE DATA ENGINE ---
 @st.cache_data
 def get_market_data(target_currency):
-    """
-    Fetches Live FX and Estimates Metal Prices.
-    """
     data = {}
-    
-    # A. FX RATES (Real Live Data via Yahoo)
     try:
         if target_currency == "USD":
             fx = 1.0
         else:
             ticker = f"{target_currency}=X" 
-            # Get data
             hist = yf.Ticker(ticker).history(period="1d")
             if not hist.empty:
                 fx = hist['Close'].iloc[-1]
             else:
-                fx = 1.0 # Fallback
+                fx = 1.0 
     except:
-        # Fallback constants if API fails
         fx = 1.40 if target_currency == "CAD" else 1.0 
     
     data['FX'] = fx
 
     # B. METAL PROXIES (Base prices in USD)
-    # Ideally, connect this to Fastmarkets or SMM API in production
     base_prices_usd = {
-        "Ni": 16500.00,   # LME Nickel Approx
-        "Co": 33000.00,   # Fastmarkets Cobalt Approx
-        "Li": 13500.00,   # China Carbonate Spot Approx
-        "NiSO4": 3800.00, # Spot Sulphate
-        "CoSO4": 6500.00, # Spot Sulphate
-        "LCE": 14000.00,  # Carbonate Spot
-        "LiOH": 15500.00  # Hydroxide Spot
+        "Ni": 16500.00, "Co": 33000.00, "Li": 13500.00,   
+        "NiSO4": 3800.00, "CoSO4": 6500.00, "LCE": 14000.00, "LiOH": 15500.00
     }
     
-    # Convert to Target Currency and kg (LME is usually per Tonne)
     for key, price_usd_ton in base_prices_usd.items():
         price_per_kg = (price_usd_ton / 1000.0) * fx
         data[key] = price_per_kg
@@ -117,19 +85,15 @@ def parse_coa_text(text):
     assays = {"Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0}
     text = text.lower().replace(",", "") 
     target_map = {
-        "Nickel": ["ni", "nickel"], 
-        "Cobalt": ["co", "cobalt"], 
-        "Lithium": ["li", "lithium"]
+        "Nickel": ["ni", "nickel"], "Cobalt": ["co", "cobalt"], "Lithium": ["li", "lithium"]
     }
     for line in text.split('\n'):
         for metal, keywords in target_map.items():
             for kw in keywords:
                 if re.search(rf"\b{kw}", line):
-                    # Find numbers
                     match = re.search(r"(\d+\.?\d*)", line.replace(kw, ""))
                     if match:
                         val = float(match.group(1))
-                        # Handle percentages: if user enters 22.5, we treat as 22.5% (0.225)
                         if val > 100: assays[metal] = val / 10000.0 / 100.0
                         else: assays[metal] = val / 100.0
     return assays
@@ -154,40 +118,23 @@ st.sidebar.markdown("---")
 st.sidebar.header("1. Feedstock & Pre-treatment")
 
 feed_type = st.sidebar.selectbox("Material Type", 
-    ["Black Mass", "Cathode Foils", "Cell Stacks / Jelly Rolls", "Whole Cells", "Modules", "Battery Packs"])
+    ["Black Mass (Processed)", "Cathode Foils", "Cell Stacks / Jelly Rolls", "Whole Cells", "Modules", "Battery Packs"])
 
-# A. Electrolyte Logic (Adjustable Cost)
-has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte", value=False)
+has_electrolyte = st.sidebar.checkbox("⚠️ Contains Electrolyte / Hazardous?", value=False)
 elec_surcharge = 0.0
-
 if has_electrolyte:
-    elec_surcharge = st.sidebar.number_input(
-        f"Safety & Drying Cost ({currency}/MT)", 
-        value=150.0, 
-        step=10.0,
-        help="Cost for thermal treatment and hazardous handling (Class 9)."
-    )
+    elec_surcharge = st.sidebar.number_input(f"Safety & Drying Cost ({currency}/MT)", value=150.0, step=10.0)
 
-# B. Mechanical / Shredding Cost
-# This cost only exists if we need to turn cells into black mass
 shredding_cost_per_ton = 0.0
 if feed_type != "Black Mass (Processed)":
-    shredding_cost_per_ton = st.sidebar.number_input(f"Mechanical/Shred Cost ({currency}/MT)", value=300.0, help="Cost to shred and separate plastics/foils.")
+    shredding_cost_per_ton = st.sidebar.number_input(f"Mechanical/Shred Cost ({currency}/MT)", value=300.0)
 
-# C. Yields
 defaults = {
     "Black Mass (Processed)": 100, "Cathode Foils": 90,
     "Cell Stacks / Jelly Rolls": 70, "Whole Cells": 60,
     "Modules": 50, "Battery Packs": 40
 }
-
-yield_pct = st.sidebar.slider(
-    f"Black Mass Yield (%)", 
-    min_value=10, max_value=100, 
-    value=defaults[feed_type],
-    help="Weight of Black Mass recovered after shredding."
-) / 100.0
-
+yield_pct = st.sidebar.slider(f"Black Mass Yield (%)", min_value=10, max_value=100, value=defaults[feed_type]) / 100.0
 gross_weight = st.sidebar.number_input(f"Total Gross Weight (kg)", value=1000.0)
 net_bm_weight = gross_weight * yield_pct
 st.sidebar.caption(f"📉 **Recoverable Black Mass:** {net_bm_weight:,.1f} kg")
@@ -218,144 +165,143 @@ li_pay_feed = c3.number_input("Li Payable", value=30.0) / 100
 # === SECTION 3: REFINING (Post-Treatment) ===
 st.sidebar.markdown("---")
 st.sidebar.header("3. Refining (Hydromet)")
-
 ni_product = st.sidebar.selectbox("Ni/Co Product", ["Sulphates (Battery Salt)", "MHP (Intermediate)"])
-li_product = st.sidebar.selectbox("Li Product", ["Carbonate (Li2CO3)", "Hydroxide (LiOH)"])
-
+li_product = st.sidebar.selectbox("Li Product", ["Carbonate (LCE)", "Hydroxide (LiOH)"])
 refining_opex_base = st.sidebar.number_input(f"Refining OPEX ({currency}/MT BM)", value=1500.0)
-st.sidebar.caption("Cost applied to Net Black Mass Weight only.")
 
-# Market Prices & Recoveries (Hidden Vars for cleaner UI)
+# Market Prices & Recoveries (Hidden Vars)
 price_ni_sulf = market_data['NiSO4']
 price_co_sulf = market_data['CoSO4']
-price_li_salt = market_data['LCE'] if li_product == "Li2CO3" else market_data['LiOH']
-mhp_pay_ni = 0.85
-mhp_pay_co = 0.80
-rec_ni = 0.95
-rec_co = 0.95
-rec_li = 0.85
+price_li_salt = market_data['LCE'] if li_product == "Carbonate (LCE)" else market_data['LiOH']
+mhp_pay_ni, mhp_pay_co = 0.85, 0.80
+rec_ni, rec_co, rec_li = 0.95, 0.95, 0.85
 
 # --- 5. MAIN APP ---
 
 st.subheader(f"Feedstock: {feed_type}")
 
 # === PRE-CALCULATIONS ===
-# 1. Shredding Cost (Applied to Gross)
 cost_shred = (gross_weight / 1000.0) * shredding_cost_per_ton
-
-# 2. Electrolyte Cost (Applied to Gross)
 cost_electrolyte = 0
 if has_electrolyte:
     cost_electrolyte = (gross_weight / 1000.0) * elec_surcharge
-
 total_pre_treat = cost_shred + cost_electrolyte
 
 # === UI SECTION ===
 col_left, col_right = st.columns([1, 1])
 
 with col_left:
-    st.info("📋 **Assay Input (Lab Results)**")
+    st.info("📋 **Assay Input**")
     
-    # RENAMED FOR CLARITY
-    assay_basis = st.radio(
-        "Where did you take this sample?", 
-        ["Whole Battery (Diluted Grade)", "Final Powder (Concentrated Grade)"],
-        horizontal=True,
-        help="Select 'Whole Battery' to trigger Enrichment Math. Select 'Final Powder' if your numbers are already from the Black Mass."
-    )
+    # 1. INPUT METHOD TOGGLE
+    # The key fix here: this variable controls which input is READ, but we allow manual override
+    input_method = st.radio("Select Input Method", ["Manual Lab Report", "Standard Chemistry (Auto-Fill)"], horizontal=True)
     
+    # Initialize default text
     default_text = "Ni: 20.5%\nCo: 6.2%\nLi: 2.5%"
-    coa_text = st.text_area("Paste Lab Results", height=150, value=default_text)
+    
+    if input_method == "Standard Chemistry (Auto-Fill)":
+        selected_chem = st.selectbox("Select Chemistry", list(BATTERY_SPECS.keys()), index=4) # Default to NMC811
+        specs = BATTERY_SPECS[selected_chem]
+        
+        # Display the standard values clearly
+        st.write(f"**Standard Black Mass Grade ({selected_chem}):**")
+        st.caption(f"Ni: {specs['Ni']}% | Co: {specs['Co']}% | Li: {specs['Li']}%")
+        
+        # Force the Logic to use these numbers
+        assay_basis = "Final Powder (Concentrated Grade)"
+        
+    else:
+        # MANUAL MODE
+        assay_basis = st.radio(
+            "Where did you take this sample?", 
+            ["Whole Battery (Diluted Grade)", "Final Powder (Concentrated Grade)"],
+            horizontal=True
+        )
+        coa_text = st.text_area("Paste Lab Results", height=150, value=default_text)
 
 with col_right:
     st.success(f"⚙️ **Process Configuration**")
-    
-    # 1. Physical Inputs
     st.markdown(f"**Feedstock:** {gross_weight:,.0f} kg (Gross)")
     st.markdown(f"**Yield:** {yield_pct*100:.0f}% → **{net_bm_weight:,.0f} kg (Net BM)**")
-    
     st.divider()
-    
-    # 2. Pre-Treatment
-    if has_electrolyte:
-        st.write(f"⚠️ **Electrolyte:** ${elec_surcharge:,.0f} / ton surcharge")
-    
-    if feed_type != "Black Mass (Processed)":
-        st.write(f"⚙️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
-    else:
-        st.write(f"⚙️ **Shredding:** Included / None")
-
-    # 3. Post-Treatment
-    st.markdown(f"🧪 **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
-    st.caption(f"Target: {ni_product} & {li_product}")
+    if has_electrolyte: st.write(f"⚠️ **Electrolyte:** ${elec_surcharge:,.0f} / ton surcharge")
+    if feed_type != "Black Mass (Processed)": st.write(f"🛠️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
+    st.markdown(f"⚗️ **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
 
 if st.button("Calculate Value", type="primary"):
-    assays = parse_coa_text(coa_text)
     
-    # === 1. MASS BALANCE & ENRICHMENT ===
+    # === 1. GET ASSAYS ===
+    assays = {"Nickel": 0, "Cobalt": 0, "Lithium": 0}
     
-    # Initialize variables
-    bm_ni_grade = 0.0
-    bm_co_grade = 0.0
-    bm_li_grade = 0.0
-    
-    # LOGIC CHECK:
-    # If "Whole Battery", we keep Metal Mass constant, but Weight drops -> Grade GOES UP.
-    if assay_basis == "Whole Battery (Diluted Grade)":
-        mass_ni = gross_weight * assays["Nickel"]
-        mass_co = gross_weight * assays["Cobalt"]
-        mass_li = gross_weight * assays["Lithium"]
-        
-        if net_bm_weight > 0:
-            bm_ni_grade = (mass_ni / net_bm_weight) * 100
-            bm_co_grade = (mass_co / net_bm_weight) * 100
-            bm_li_grade = (mass_li / net_bm_weight) * 100
-            
-    # If "Final Powder", the user gave us the final grade. Grade stays SAME.
+    if input_method == "Standard Chemistry (Auto-Fill)":
+        specs = BATTERY_SPECS[selected_chem]
+        assays["Nickel"] = specs["Ni"] / 100.0
+        assays["Cobalt"] = specs["Co"] / 100.0
+        assays["Lithium"] = specs["Li"] / 100.0
     else:
-        mass_ni = net_bm_weight * assays["Nickel"]
-        mass_co = net_bm_weight * assays["Cobalt"]
-        mass_li = net_bm_weight * assays["Lithium"]
-        
-        bm_ni_grade = assays["Nickel"] * 100
-        bm_co_grade = assays["Cobalt"] * 100
-        bm_li_grade = assays["Lithium"] * 100
+        # Load from Manual Text Area
+        assays = parse_coa_text(coa_text)
+    
+    # === 2. MASS BALANCE & ENRICHMENT (FIXED LOGIC) ===
+    
+    # Calculate TOTAL Metal Mass in the batch
+    if assay_basis == "Whole Battery (Diluted Grade)":
+        # Input grade is e.g. 5% of the WHOLE cell
+        total_mass_ni = gross_weight * assays["Nickel"]
+        total_mass_co = gross_weight * assays["Cobalt"]
+        total_mass_li = gross_weight * assays["Lithium"]
+    else:
+        # Input grade is e.g. 20% of the POWDER (Black Mass)
+        # But we only HAVE 'net_bm_weight' amount of powder
+        total_mass_ni = net_bm_weight * assays["Nickel"]
+        total_mass_co = net_bm_weight * assays["Cobalt"]
+        total_mass_li = net_bm_weight * assays["Lithium"]
+    
+    # EFFECTIVE GRADE CALCULATION (The Bug Fix)
+    # Effective Grade = (Total Metal Mass / Net Black Mass Weight) * 100
+    if net_bm_weight > 0:
+        bm_ni_grade = (total_mass_ni / net_bm_weight) * 100
+        bm_co_grade = (total_mass_co / net_bm_weight) * 100
+        bm_li_grade = (total_mass_li / net_bm_weight) * 100
+    else:
+        bm_ni_grade = 0
+        bm_co_grade = 0
+        bm_li_grade = 0
 
-    # === 2. COSTS ===
-    cost_ni = mass_ni * ni_base * ni_pay_feed
-    cost_co = mass_co * co_base * co_pay_feed
-    cost_li = mass_li * li_base * li_pay_feed
+    # === 3. COSTS ===
+    cost_ni = total_mass_ni * ni_base * ni_pay_feed
+    cost_co = total_mass_co * co_base * co_pay_feed
+    cost_li = total_mass_li * li_base * li_pay_feed
     material_cost = cost_ni + cost_co + cost_li
     
     total_refining_cost = (net_bm_weight / 1000.0) * refining_opex_base
     total_opex = total_pre_treat + total_refining_cost
     
-    # === 3. REVENUE & PRODUCTION SCHEDULE ===
-    
-    production_data = [] # Stores [Product Name, Mass (kg), Revenue ($)]
+    # === 4. REVENUE & PRODUCTION SCHEDULE ===
+    production_data = [] 
     
     # Ni/Co Revenue
     if ni_product == "Sulphates (Battery Salt)":
-        qty_ni_prod = mass_ni * rec_ni * FACTORS["Ni_to_Sulphate"]
+        qty_ni_prod = total_mass_ni * rec_ni * FACTORS["Ni_to_Sulphate"]
         rev_ni = qty_ni_prod * price_ni_sulf
         production_data.append(["Nickel Sulphate", qty_ni_prod, rev_ni])
         
-        qty_co_prod = mass_co * rec_co * FACTORS["Co_to_Sulphate"]
+        qty_co_prod = total_mass_co * rec_co * FACTORS["Co_to_Sulphate"]
         rev_co = qty_co_prod * price_co_sulf
         production_data.append(["Cobalt Sulphate", qty_co_prod, rev_co])
     else: 
-        # MHP (Intermediate)
-        qty_ni_prod = mass_ni * rec_ni
+        qty_ni_prod = total_mass_ni * rec_ni
         rev_ni = qty_ni_prod * ni_base * mhp_pay_ni
         production_data.append(["MHP (Ni Content)", qty_ni_prod, rev_ni])
         
-        qty_co_prod = mass_co * rec_co
+        qty_co_prod = total_mass_co * rec_co
         rev_co = qty_co_prod * co_base * mhp_pay_co
         production_data.append(["MHP (Co Content)", qty_co_prod, rev_co])
         
     # Li Revenue
     factor_li = FACTORS["Li_to_Carbonate"] if li_product == "Carbonate (LCE)" else FACTORS["Li_to_Hydroxide"]
-    qty_li_prod = mass_li * rec_li * factor_li
+    qty_li_prod = total_mass_li * rec_li * factor_li
     rev_li = qty_li_prod * price_li_salt
     production_data.append([li_product, qty_li_prod, rev_li])
     
@@ -364,6 +310,10 @@ if st.button("Calculate Value", type="primary"):
 
     # === DISPLAY METRICS ===
     st.divider()
+    
+    # New logic to handle weird numbers (like if user inputs >100% manually)
+    if bm_ni_grade > 100: bm_ni_grade = 100.0
+    if bm_co_grade > 100: bm_co_grade = 100.0
     
     st.caption(f"ℹ️ **Effective Black Mass Grade:** Ni {bm_ni_grade:.1f}% | Co {bm_co_grade:.1f}% | Li {bm_li_grade:.1f}%")
 
@@ -377,47 +327,24 @@ if st.button("Calculate Value", type="primary"):
 
     st.write("---")
     
-    # === NEW DETAILED OUTPUT SECTION ===
-    
-    # THIS WAS THE MISSING LINE:
     col_prod, col_chart = st.columns([1, 2])
-    
     with col_prod:
-        st.subheader("Final Products")
-        # Create a nice table showing what you actually produced
+        st.subheader("📦 Production Schedule")
         prod_df = pd.DataFrame(production_data, columns=["Product Stream", "Output Mass (kg)", "Est. Revenue"])
-        
-        # Add a total row
         total_mass_prod = prod_df["Output Mass (kg)"].sum()
         new_row = {"Product Stream": "TOTAL", "Output Mass (kg)": total_mass_prod, "Est. Revenue": total_rev}
         prod_df = pd.concat([prod_df, pd.DataFrame([new_row])], ignore_index=True)
         
-        # Format the numbers
-        st.dataframe(
-            prod_df.style.format({
-                "Output Mass (kg)": "{:,.0f}",
-                "Est. Revenue": "${:,.0f}"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(prod_df.style.format({"Output Mass (kg)": "{:,.0f}", "Est. Revenue": "${:,.0f}"}), use_container_width=True, hide_index=True)
 
     with col_chart:
-        st.subheader("Financial Split")
-        
-        # 1. Prepare Data with a specific "Color" column
+        st.subheader("📉 Financial Split")
         chart_data = pd.DataFrame({
             "Category": ["Feedstock Cost", "Pre-Treatment", "Refining", "Net Profit"],
             "Amount": [material_cost, total_pre_treat, total_refining_cost, net_profit],
-            "Color": ["#FF5252", "#FF5252", "#FF5252", "#00D668"] # Red for costs, Green for profit
+            "Color": ["#FF5252", "#FF5252", "#FF5252", "#00D668"] 
         })
-        
-        # 2. Build Chart using Altair (enables custom colors)
         c = alt.Chart(chart_data).mark_bar().encode(
-            x=alt.X('Category', sort=None), 
-            y='Amount',
-            color=alt.Color('Color', scale=None), 
-            tooltip=['Category', 'Amount']
+            x=alt.X('Category', sort=None), y='Amount', color=alt.Color('Color', scale=None), tooltip=['Category', 'Amount']
         )
-        
         st.altair_chart(c, use_container_width=True)
