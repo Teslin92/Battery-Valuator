@@ -226,8 +226,8 @@ with col_right:
     st.markdown(f"**Yield:** {yield_pct*100:.0f}% → **{net_bm_weight:,.0f} kg (Net BM)**")
     st.divider()
     if has_electrolyte: st.write(f"⚠️ **Electrolyte:** ${elec_surcharge:,.0f} / ton surcharge")
-    if feed_type != "Black Mass (Processed)": st.write(f"🛠️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
-    st.markdown(f"⚗️ **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
+    if feed_type != "Black Mass (Processed)": st.write(f"⚙️ **Shredding:** ${shredding_cost_per_ton:,.0f} / ton")
+    st.markdown(f"🧪 **Refining:** ${refining_opex_base:,.0f} / ton (BM)")
 
 if st.button("Calculate Value", type="primary"):
     
