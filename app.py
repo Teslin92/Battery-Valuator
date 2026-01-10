@@ -5,6 +5,7 @@ import yfinance as yf
 import altair as alt
 from datetime import datetime
 import logging
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -96,6 +97,48 @@ FACTORS = {
 }
 
 # --- 2. LIVE DATA ENGINE ---
+def fetch_live_metal_prices():
+    """
+    Attempt to fetch live metal prices from free APIs.
+
+    Returns:
+        dict: Metal prices in USD per tonne, or None if fetch fails
+    """
+    try:
+        # Try Exchange Rate API for metal prices (free tier: 1500 requests/month)
+        # Note: This is a fallback - you can also use Metals-API.com (50 requests/month free)
+        # For now, using yfinance for LME metals via ETF proxies
+
+        prices = {}
+
+        # Fetch Copper via ETF proxy (CPER - United States Copper Index Fund)
+        try:
+            cu_ticker = yf.Ticker("HG=F")  # Copper Futures
+            cu_hist = cu_ticker.history(period="1d")
+            if not cu_hist.empty:
+                # Copper futures are in USD per pound, convert to USD per tonne
+                cu_price_lb = cu_hist['Close'].iloc[-1]
+                prices["Cu"] = cu_price_lb * 2204.62  # pounds to tonnes
+                logger.info(f"Copper live price fetched: ${prices['Cu']:.2f}/tonne")
+        except Exception as e:
+            logger.warning(f"Copper price fetch failed: {str(e)}")
+
+        # Fetch Aluminum via futures
+        try:
+            al_ticker = yf.Ticker("ALI=F")  # Aluminum Futures
+            al_hist = al_ticker.history(period="1d")
+            if not al_hist.empty:
+                prices["Al"] = al_hist['Close'].iloc[-1]
+                logger.info(f"Aluminum live price fetched: ${prices['Al']:.2f}/tonne")
+        except Exception as e:
+            logger.warning(f"Aluminum price fetch failed: {str(e)}")
+
+        return prices if prices else None
+
+    except Exception as e:
+        logger.error(f"Live metal price fetch failed: {str(e)}")
+        return None
+
 @st.cache_data(ttl=600)  # Cache for 10 minutes
 def get_market_data(target_currency):
     """
@@ -135,17 +178,28 @@ def get_market_data(target_currency):
     data['fx_fallback_used'] = fx_fallback_used
     data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # B. METAL PROXIES (Base prices in USD per tonne)
-    # These are fallback prices - ideally would come from real-time API
+    # B. METAL PRICES (Base prices in USD per tonne)
+    # Try to fetch live prices first, then fall back to static prices
+    live_prices = fetch_live_metal_prices()
+
+    # Fallback prices (used if live fetch fails)
     base_prices_usd = {
         "Ni": 16500.00,   # LME Nickel 3-month ($/tonne)
         "Co": 33000.00,   # Fastmarkets Cobalt Standard Grade ($/tonne)
         "Li": 13500.00,   # China Lithium Carbonate Spot ($/tonne)
+        "Cu": 9200.00,    # LME Copper 3-month ($/tonne)
+        "Al": 2500.00,    # LME Aluminum 3-month ($/tonne)
+        "Mn": 1800.00,    # Manganese Metal 99.7% ($/tonne)
         "NiSO4": 3800.00, # Battery-grade Nickel Sulphate ($/tonne)
         "CoSO4": 6500.00, # Battery-grade Cobalt Sulphate ($/tonne)
         "LCE": 14000.00,  # Lithium Carbonate Equivalent ($/tonne)
         "LiOH": 15500.00  # Lithium Hydroxide Monohydrate ($/tonne)
     }
+
+    # Merge live prices with fallbacks
+    if live_prices:
+        base_prices_usd.update(live_prices)
+        logger.info(f"Using {len(live_prices)} live prices")
 
     # Convert from $/tonne to $/kg in target currency
     for key, price_usd_ton in base_prices_usd.items():
@@ -170,13 +224,16 @@ def parse_coa_text(text):
     Returns:
         dict: Metal assays as decimals (e.g., 0.205 for 20.5%)
     """
-    assays = {"Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0}
+    assays = {"Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0, "Copper": 0.0, "Aluminum": 0.0, "Manganese": 0.0}
     text = text.lower().replace(",", "")
 
     target_map = {
         "Nickel": ["ni", "nickel"],
         "Cobalt": ["co", "cobalt"],
-        "Lithium": ["li", "lithium"]
+        "Lithium": ["li", "lithium"],
+        "Copper": ["cu", "copper"],
+        "Aluminum": ["al", "aluminum", "aluminium"],
+        "Manganese": ["mn", "manganese"]
     }
 
     for line in text.split('\n'):
@@ -265,7 +322,7 @@ st.sidebar.caption(f"📉 **Recoverable Black Mass:** {net_bm_weight:,.1f} kg")
 st.sidebar.markdown("---")
 st.sidebar.header("2. Pricing (Buying)")
 
-st.sidebar.caption(f"**Metal Prices ({currency}/kg)**")
+st.sidebar.caption(f"**Primary Metal Prices ({currency}/kg)**")
 c1, c2 = st.sidebar.columns(2)
 ni_base = c1.number_input("Ni Price", value=float(f"{market_data['Ni']:.2f}"), min_value=0.0, step=1.0)
 c2.caption(f"Live: {market_data['Ni']:.2f}")
@@ -278,11 +335,29 @@ c1, c2 = st.sidebar.columns(2)
 li_base = c1.number_input("Li Price", value=float(f"{market_data['Li']:.2f}"), min_value=0.0, step=1.0)
 c2.caption(f"Live: {market_data['Li']:.2f}")
 
+st.sidebar.caption(f"**Secondary Metal Prices ({currency}/kg)**")
+c1, c2 = st.sidebar.columns(2)
+cu_base = c1.number_input("Cu Price", value=float(f"{market_data['Cu']:.2f}"), min_value=0.0, step=0.5)
+c2.caption(f"Live: {market_data['Cu']:.2f}")
+
+c1, c2 = st.sidebar.columns(2)
+al_base = c1.number_input("Al Price", value=float(f"{market_data['Al']:.2f}"), min_value=0.0, step=0.1)
+c2.caption(f"Live: {market_data['Al']:.2f}")
+
+c1, c2 = st.sidebar.columns(2)
+mn_base = c1.number_input("Mn Price", value=float(f"{market_data['Mn']:.2f}"), min_value=0.0, step=0.1)
+c2.caption(f"Live: {market_data['Mn']:.2f}")
+
 st.sidebar.caption("**Payables (%)**")
 c1, c2, c3 = st.sidebar.columns(3)
 ni_pay_feed = c1.number_input("Ni Payable", value=80.0, min_value=0.0, max_value=100.0, step=5.0) / 100
 co_pay_feed = c2.number_input("Co Payable", value=75.0, min_value=0.0, max_value=100.0, step=5.0) / 100
 li_pay_feed = c3.number_input("Li Payable", value=30.0, min_value=0.0, max_value=100.0, step=5.0) / 100
+
+c1, c2, c3 = st.sidebar.columns(3)
+cu_pay_feed = c1.number_input("Cu Payable", value=80.0, min_value=0.0, max_value=100.0, step=5.0) / 100
+al_pay_feed = c2.number_input("Al Payable", value=70.0, min_value=0.0, max_value=100.0, step=5.0) / 100
+mn_pay_feed = c3.number_input("Mn Payable", value=60.0, min_value=0.0, max_value=100.0, step=5.0) / 100
 
 # === SECTION 3: REFINING (Post-Treatment) ===
 st.sidebar.markdown("---")
@@ -331,8 +406,8 @@ with col_input:
         help="Select 'Whole Battery' to trigger Enrichment Math. Select 'Final Powder' if your numbers are already from the Black Mass."
     )
     
-    default_text = "Ni: 20.5%\nCo: 6.2%\nLi: 2.5%"
-    coa_text = st.text_area("Paste Results", height=180, value=default_text, help="Paste text from email/PDF")
+    default_text = "Ni: 20.5%\nCo: 6.2%\nLi: 2.5%\nCu: 3.5%\nAl: 1.2%\nMn: 4.8%"
+    coa_text = st.text_area("Paste Results", height=200, value=default_text, help="Paste text from email/PDF")
     
     calc_btn = st.button("RUN VALUATION ➤", type="primary")
 
@@ -347,23 +422,36 @@ if calc_btn:
 
     # 1. MASS BALANCE
     bm_ni_grade, bm_co_grade, bm_li_grade = 0.0, 0.0, 0.0
+    bm_cu_grade, bm_al_grade, bm_mn_grade = 0.0, 0.0, 0.0
 
     if assay_basis == "Whole Battery":
         mass_ni = (gross_weight * assays["Nickel"]) * mech_recovery
         mass_co = (gross_weight * assays["Cobalt"]) * mech_recovery
         mass_li = (gross_weight * assays["Lithium"]) * mech_recovery
+        mass_cu = (gross_weight * assays["Copper"]) * mech_recovery
+        mass_al = (gross_weight * assays["Aluminum"]) * mech_recovery
+        mass_mn = (gross_weight * assays["Manganese"]) * mech_recovery
 
         if net_bm_weight > 0:
             bm_ni_grade = (mass_ni / net_bm_weight) * 100
             bm_co_grade = (mass_co / net_bm_weight) * 100
             bm_li_grade = (mass_li / net_bm_weight) * 100
+            bm_cu_grade = (mass_cu / net_bm_weight) * 100
+            bm_al_grade = (mass_al / net_bm_weight) * 100
+            bm_mn_grade = (mass_mn / net_bm_weight) * 100
     else:
         mass_ni = net_bm_weight * assays["Nickel"]
         mass_co = net_bm_weight * assays["Cobalt"]
         mass_li = net_bm_weight * assays["Lithium"]
+        mass_cu = net_bm_weight * assays["Copper"]
+        mass_al = net_bm_weight * assays["Aluminum"]
+        mass_mn = net_bm_weight * assays["Manganese"]
         bm_ni_grade = assays["Nickel"] * 100
         bm_co_grade = assays["Cobalt"] * 100
         bm_li_grade = assays["Lithium"] * 100
+        bm_cu_grade = assays["Copper"] * 100
+        bm_al_grade = assays["Aluminum"] * 100
+        bm_mn_grade = assays["Manganese"] * 100
 
     # VALIDATION: Check for unrealistic assay values in black mass
     # Typical black mass ranges: Ni (10-60%), Co (3-25%), Li (1-10%)
@@ -384,7 +472,10 @@ if calc_btn:
     cost_ni = mass_ni * ni_base * ni_pay_feed
     cost_co = mass_co * co_base * co_pay_feed
     cost_li = mass_li * li_base * li_pay_feed
-    material_cost = cost_ni + cost_co + cost_li
+    cost_cu = mass_cu * cu_base * cu_pay_feed
+    cost_al = mass_al * al_base * al_pay_feed
+    cost_mn = mass_mn * mn_base * mn_pay_feed
+    material_cost = cost_ni + cost_co + cost_li + cost_cu + cost_al + cost_mn
     
     # PRE-CALCULATIONS (Pulled from top section)
     cost_shred = (gross_weight / 1000.0) * shredding_cost_per_ton
@@ -459,7 +550,7 @@ if calc_btn:
     
     st.dataframe(prod_df.style.format({"Mass (kg)": "{:,.0f}", "Revenue": "${:,.0f}"}), use_container_width=True, hide_index=True)
     
-    st.caption(f"ℹ️ Effective Grade: Ni {bm_ni_grade:.1f}% | Co {bm_co_grade:.1f}% | Li {bm_li_grade:.1f}%")
+    st.caption(f"ℹ️ Effective Grade: Ni {bm_ni_grade:.1f}% | Co {bm_co_grade:.1f}% | Li {bm_li_grade:.1f}% | Cu {bm_cu_grade:.1f}% | Al {bm_al_grade:.1f}% | Mn {bm_mn_grade:.1f}%")
 
 else:
     # Placeholder when app first loads
