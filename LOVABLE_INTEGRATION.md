@@ -285,11 +285,23 @@ Checks if assay values are within typical ranges.
   - Battery Packs
 - Total Gross Weight (kg) - number input
 - Black Mass Yield (%) - slider (10-100%)
-- Mechanical Recovery (%) - slider (80-100%) - hide if "Black Mass (Processed)"
+- Mechanical Recovery (%) - slider (80-100%) - **HIDE if "Black Mass (Processed)"**
 - Contains Electrolyte - checkbox
-- Electrolyte Surcharge ($/MT) - number input - show if checkbox is true
-- Mechanical/Shred Cost ($/MT) - number input - hide if "Black Mass (Processed)"
+- Electrolyte Surcharge ($/MT) - number input - **SHOW ONLY if checkbox is true**
+- Mechanical/Shred Cost ($/MT) - number input - **HIDE if "Black Mass (Processed)"** and **SET TO 0 in API request**
 - Display calculated: **Recoverable Black Mass** in kg
+
+**CRITICAL CONDITIONAL LOGIC:**
+- When Material Type = "Black Mass (Processed)":
+  - Hide "Mechanical Recovery" field (set to 100% / 1.0 in API)
+  - Hide "Mechanical/Shred Cost" field
+  - **ALWAYS send `shredding_cost_per_ton: 0` to the API**
+  - Set `mech_recovery: 1.0` in API request
+
+- When Material Type = anything else:
+  - Show "Mechanical Recovery" field (default 95%)
+  - Show "Mechanical/Shred Cost" field (default 300)
+  - Send user's input values to the API
 
 **Section 2: Pricing (Buying)**
 
@@ -568,6 +580,43 @@ A: Yes, display the current value next to or above the slider.
 
 **Q: What's the primary user action?**
 A: "RUN VALUATION" - make this button prominent and easy to find.
+
+---
+
+## Common Issues & Troubleshooting
+
+### Issue: Profit differs from Streamlit app
+
+**Symptom:** Vercel frontend shows different profit than Streamlit with same inputs.
+
+**Cause:** Pre-treatment costs being applied incorrectly to Black Mass.
+
+**Solution:** Ensure conditional logic is implemented correctly:
+```javascript
+// Pseudo-code for API request building
+const materialType = form.materialType.value;
+const apiRequest = {
+  // ... other fields ...
+  shredding_cost_per_ton: materialType === "Black Mass (Processed)" ? 0 : form.shreddingCost.value,
+  mech_recovery: materialType === "Black Mass (Processed)" ? 1.0 : form.mechRecovery.value / 100,
+  // ... rest of request ...
+};
+```
+
+### Issue: Total OPEX is $300 higher than expected
+
+**Cause:** Frontend is sending `shredding_cost_per_ton: 300` even when material type is "Black Mass (Processed)".
+
+**Fix:** Black Mass should NEVER have shredding costs - it's already processed material.
+
+### Validation Checklist
+
+Before deploying, verify:
+- [ ] Black Mass shows $0 pre-treatment costs
+- [ ] Other materials (Cathode Foils, etc.) show correct shredding costs
+- [ ] Electrolyte surcharge only applies when checkbox is checked
+- [ ] Currency conversion applies to all prices
+- [ ] Results match Streamlit app with identical inputs
 
 ---
 
