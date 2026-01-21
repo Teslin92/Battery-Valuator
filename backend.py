@@ -3,6 +3,8 @@ Battery Valuator Backend Logic
 Pure calculation engine - no UI dependencies
 """
 
+import os
+import requests
 import yfinance as yf
 import logging
 from datetime import datetime
@@ -10,6 +12,9 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Metals.Dev API Key (get free key at https://metals.dev)
+METALS_DEV_API_KEY = os.environ.get('METALS_DEV_API_KEY', '')
 
 # Stoichiometry (Metal to Salt Conversion Factors)
 # These factors convert pure metal mass to salt mass
@@ -21,9 +26,93 @@ FACTORS = {
     "Li_to_Hydroxide": 6.05      # Li → LiOH·H2O
 }
 
-def fetch_live_metal_prices():
+def fetch_metals_dev_prices():
     """
-    Attempt to fetch live metal prices from free APIs.
+    Fetch LME metal prices from Metals.Dev API.
+
+    Returns:
+        dict: Metal prices in USD per tonne, or None if fetch fails
+    """
+    if not METALS_DEV_API_KEY:
+        logger.warning("METALS_DEV_API_KEY not set, skipping Metals.Dev fetch")
+        return None
+
+    try:
+        # Fetch LME authority prices (Nickel, Copper, Aluminum)
+        url = f"https://api.metals.dev/v1/metal/authority?api_key={METALS_DEV_API_KEY}&authority=lme"
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            logger.warning(f"Metals.Dev API returned status {response.status_code}")
+            return None
+
+        data = response.json()
+        if data.get('status') != 'success':
+            logger.warning(f"Metals.Dev API error: {data.get('error_message', 'Unknown error')}")
+            return None
+
+        prices = {}
+        metals = data.get('metals', {})
+
+        # LME prices are typically in USD per tonne
+        if 'lme_nickel' in metals:
+            prices['Ni'] = metals['lme_nickel']
+            logger.info(f"Nickel (Metals.Dev): ${prices['Ni']:.2f}/tonne")
+
+        if 'lme_copper' in metals:
+            prices['Cu'] = metals['lme_copper']
+            logger.info(f"Copper (Metals.Dev): ${prices['Cu']:.2f}/tonne")
+
+        if 'lme_aluminum' in metals:
+            prices['Al'] = metals['lme_aluminum']
+            logger.info(f"Aluminum (Metals.Dev): ${prices['Al']:.2f}/tonne")
+
+        return prices if prices else None
+
+    except requests.exceptions.Timeout:
+        logger.warning("Metals.Dev API request timed out")
+        return None
+    except Exception as e:
+        logger.error(f"Metals.Dev API fetch failed: {str(e)}")
+        return None
+
+def fetch_metals_dev_currencies(base_currency="USD"):
+    """
+    Fetch currency exchange rates from Metals.Dev API.
+
+    Args:
+        base_currency: Base currency code (USD)
+
+    Returns:
+        dict: Currency rates, or None if fetch fails
+    """
+    if not METALS_DEV_API_KEY:
+        logger.warning("METALS_DEV_API_KEY not set, skipping currency fetch")
+        return None
+
+    try:
+        url = f"https://api.metals.dev/v1/currencies?api_key={METALS_DEV_API_KEY}&base={base_currency}"
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            logger.warning(f"Metals.Dev currencies API returned status {response.status_code}")
+            return None
+
+        data = response.json()
+        if data.get('status') != 'success':
+            logger.warning(f"Metals.Dev currencies error: {data.get('error_message', 'Unknown error')}")
+            return None
+
+        return data.get('currencies', {})
+
+    except Exception as e:
+        logger.error(f"Metals.Dev currencies fetch failed: {str(e)}")
+        return None
+
+def fetch_yfinance_prices():
+    """
+    Fallback: Fetch metal prices from yfinance futures.
+    Only works for Copper and Aluminum.
 
     Returns:
         dict: Metal prices in USD per tonne, or None if fetch fails
@@ -39,7 +128,7 @@ def fetch_live_metal_prices():
                 # Copper futures are in USD per pound, convert to USD per tonne
                 cu_price_lb = cu_hist['Close'].iloc[-1]
                 prices["Cu"] = cu_price_lb * 2204.62  # pounds to tonnes
-                logger.info(f"Copper live price fetched: ${prices['Cu']:.2f}/tonne")
+                logger.info(f"Copper (yfinance): ${prices['Cu']:.2f}/tonne")
         except Exception as e:
             logger.warning(f"Copper price fetch failed: {str(e)}")
 
@@ -49,19 +138,49 @@ def fetch_live_metal_prices():
             al_hist = al_ticker.history(period="1d")
             if not al_hist.empty:
                 prices["Al"] = al_hist['Close'].iloc[-1]
-                logger.info(f"Aluminum live price fetched: ${prices['Al']:.2f}/tonne")
+                logger.info(f"Aluminum (yfinance): ${prices['Al']:.2f}/tonne")
         except Exception as e:
             logger.warning(f"Aluminum price fetch failed: {str(e)}")
 
         return prices if prices else None
 
     except Exception as e:
-        logger.error(f"Live metal price fetch failed: {str(e)}")
+        logger.error(f"yfinance metal price fetch failed: {str(e)}")
         return None
+
+def fetch_yfinance_fx(target_currency):
+    """
+    Fallback: Fetch FX rate from yfinance.
+
+    Args:
+        target_currency: Target currency code (CAD, EUR, CNY)
+
+    Returns:
+        float: FX rate, or None if fetch fails
+    """
+    if target_currency == "USD":
+        return 1.0
+
+    try:
+        ticker = f"{target_currency}=X"
+        hist = yf.Ticker(ticker).history(period="1d")
+        if not hist.empty:
+            rate = hist['Close'].iloc[-1]
+            logger.info(f"FX rate (yfinance): 1 USD = {rate:.4f} {target_currency}")
+            return rate
+    except Exception as e:
+        logger.warning(f"yfinance FX fetch failed: {str(e)}")
+
+    return None
 
 def get_market_data(target_currency="USD"):
     """
     Fetch current market data including FX rates and metal prices.
+
+    Priority order:
+    1. Metals.Dev API (best source for LME prices + FX)
+    2. yfinance (fallback for Cu, Al futures + FX)
+    3. Static fallback prices
 
     Args:
         target_currency: Target currency code (USD, CAD, EUR, CNY)
@@ -71,37 +190,38 @@ def get_market_data(target_currency="USD"):
     """
     data = {}
     fx_fallback_used = False
+    price_source = "fallback"
+
+    # Static fallback rates (approximate, as of Jan 2025)
+    fallback_fx_rates = {"CAD": 1.40, "EUR": 0.92, "CNY": 7.25, "USD": 1.0}
 
     # A. CURRENCY CONVERSION
-    try:
-        if target_currency == "USD":
-            fx = 1.0
-        else:
-            ticker = f"{target_currency}=X"
-            hist = yf.Ticker(ticker).history(period="1d")
-            if not hist.empty:
-                fx = hist['Close'].iloc[-1]
-                logger.info(f"FX rate fetched: 1 USD = {fx:.4f} {target_currency}")
-            else:
-                fx = 1.0
-                fx_fallback_used = True
-                logger.warning(f"No FX data returned for {target_currency}, using 1.0")
-    except Exception as e:
-        logger.error(f"FX fetch error for {target_currency}: {str(e)}")
-        # Fallback rates (approximate, as of Jan 2025)
-        fallback_rates = {"CAD": 1.40, "EUR": 0.95, "CNY": 7.25, "USD": 1.0}
-        fx = fallback_rates.get(target_currency, 1.0)
+    fx = None
+
+    # Try Metals.Dev first for FX rates
+    if METALS_DEV_API_KEY:
+        currencies = fetch_metals_dev_currencies("USD")
+        if currencies and target_currency.lower() in currencies:
+            fx = currencies[target_currency.lower()]
+            logger.info(f"FX rate (Metals.Dev): 1 USD = {fx:.4f} {target_currency}")
+
+    # Fallback to yfinance for FX
+    if fx is None and target_currency != "USD":
+        fx = fetch_yfinance_fx(target_currency)
+
+    # Final fallback to static rates
+    if fx is None:
+        fx = fallback_fx_rates.get(target_currency, 1.0)
         fx_fallback_used = True
+        if target_currency != "USD":
+            logger.warning(f"Using fallback FX rate for {target_currency}: {fx}")
 
     data['FX'] = fx
     data['fx_fallback_used'] = fx_fallback_used
     data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # B. METAL PRICES (Base prices in USD per tonne)
-    # Try to fetch live prices first, then fall back to static prices
-    live_prices = fetch_live_metal_prices()
-
-    # Fallback prices (used if live fetch fails)
+    # Fallback prices (used if all live fetches fail)
     base_prices_usd = {
         "Ni": 16500.00,   # LME Nickel 3-month ($/tonne)
         "Co": 33000.00,   # Fastmarkets Cobalt Standard Grade ($/tonne)
@@ -115,10 +235,26 @@ def get_market_data(target_currency="USD"):
         "LiOH": 15500.00  # Lithium Hydroxide Monohydrate ($/tonne)
     }
 
-    # Merge live prices with fallbacks
-    if live_prices:
-        base_prices_usd.update(live_prices)
-        logger.info(f"Using {len(live_prices)} live prices")
+    # Try Metals.Dev first (best source for Ni, Cu, Al)
+    metals_dev_prices = fetch_metals_dev_prices()
+    if metals_dev_prices:
+        base_prices_usd.update(metals_dev_prices)
+        price_source = "metals.dev"
+        logger.info(f"Using {len(metals_dev_prices)} prices from Metals.Dev")
+
+    # Fallback to yfinance for Cu and Al if not already fetched
+    if 'Cu' not in (metals_dev_prices or {}) or 'Al' not in (metals_dev_prices or {}):
+        yfinance_prices = fetch_yfinance_prices()
+        if yfinance_prices:
+            # Only update metals not already fetched from Metals.Dev
+            for metal, price in yfinance_prices.items():
+                if metal not in (metals_dev_prices or {}):
+                    base_prices_usd[metal] = price
+                    if price_source == "fallback":
+                        price_source = "yfinance"
+            logger.info(f"Using {len(yfinance_prices)} prices from yfinance")
+
+    data['price_source'] = price_source
 
     # Convert from $/tonne to $/kg in target currency
     for key, price_usd_ton in base_prices_usd.items():
