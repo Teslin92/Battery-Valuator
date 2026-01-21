@@ -7,7 +7,7 @@ import os
 import requests
 import yfinance as yf
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +15,54 @@ logger = logging.getLogger(__name__)
 
 # Metals.Dev API Key (get free key at https://metals.dev)
 METALS_DEV_API_KEY = os.environ.get('METALS_DEV_API_KEY', '')
+
+# Cache for Metals.Dev API responses (saves API calls)
+_metals_dev_cache = {
+    'data': None,
+    'timestamp': None,
+    'ttl_minutes': 15  # Cache for 15 minutes
+}
+
+def _get_cached_metals_dev_data():
+    """
+    Get Metals.Dev data from cache or fetch if expired.
+    Reduces API calls from ~100/month to ~3000/month worth of requests.
+    """
+    now = datetime.now()
+
+    # Check if cache is valid
+    if (_metals_dev_cache['data'] is not None and
+        _metals_dev_cache['timestamp'] is not None and
+        now - _metals_dev_cache['timestamp'] < timedelta(minutes=_metals_dev_cache['ttl_minutes'])):
+        logger.info("Using cached Metals.Dev data")
+        return _metals_dev_cache['data']
+
+    # Fetch fresh data
+    if not METALS_DEV_API_KEY:
+        return None
+
+    try:
+        url = f"https://api.metals.dev/v1/latest?api_key={METALS_DEV_API_KEY}&currency=USD&unit=toz"
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            logger.warning(f"Metals.Dev API returned status {response.status_code}")
+            return _metals_dev_cache['data']  # Return stale cache if available
+
+        data = response.json()
+        if data.get('status') != 'success':
+            logger.warning(f"Metals.Dev API error: {data.get('error_message')}")
+            return _metals_dev_cache['data']
+
+        # Update cache
+        _metals_dev_cache['data'] = data
+        _metals_dev_cache['timestamp'] = now
+        logger.info("Fetched fresh Metals.Dev data (cached for 15 min)")
+        return data
+
+    except Exception as e:
+        logger.error(f"Metals.Dev fetch error: {str(e)}")
+        return _metals_dev_cache['data']  # Return stale cache if available
 
 # Stoichiometry (Metal to Salt Conversion Factors)
 # These factors convert pure metal mass to salt mass
@@ -28,29 +76,16 @@ FACTORS = {
 
 def fetch_metals_dev_prices():
     """
-    Fetch LME metal prices from Metals.Dev API.
+    Fetch LME metal prices from Metals.Dev API (uses cache).
 
     Returns:
         dict: Metal prices in USD per tonne, or None if fetch fails
     """
-    if not METALS_DEV_API_KEY:
-        logger.warning("METALS_DEV_API_KEY not set, skipping Metals.Dev fetch")
+    data = _get_cached_metals_dev_data()
+    if not data:
         return None
 
     try:
-        # Fetch latest prices (includes LME metals)
-        url = f"https://api.metals.dev/v1/latest?api_key={METALS_DEV_API_KEY}&currency=USD&unit=toz"
-        response = requests.get(url, timeout=10)
-
-        if response.status_code != 200:
-            logger.warning(f"Metals.Dev API returned status {response.status_code}")
-            return None
-
-        data = response.json()
-        if data.get('status') != 'success':
-            logger.warning(f"Metals.Dev API error: {data.get('error_message', 'Unknown error')}")
-            return None
-
         prices = {}
         metals = data.get('metals', {})
 
@@ -72,16 +107,13 @@ def fetch_metals_dev_prices():
 
         return prices if prices else None
 
-    except requests.exceptions.Timeout:
-        logger.warning("Metals.Dev API request timed out")
-        return None
     except Exception as e:
-        logger.error(f"Metals.Dev API fetch failed: {str(e)}")
+        logger.error(f"Metals.Dev price extraction failed: {str(e)}")
         return None
 
 def fetch_metals_dev_currencies(base_currency="USD"):
     """
-    Fetch currency exchange rates from Metals.Dev API.
+    Fetch currency exchange rates from Metals.Dev API (uses cache).
 
     Args:
         base_currency: Base currency code (USD)
@@ -89,27 +121,11 @@ def fetch_metals_dev_currencies(base_currency="USD"):
     Returns:
         dict: Currency rates, or None if fetch fails
     """
-    if not METALS_DEV_API_KEY:
-        logger.warning("METALS_DEV_API_KEY not set, skipping currency fetch")
+    data = _get_cached_metals_dev_data()
+    if not data:
         return None
 
     try:
-        # Use latest endpoint which includes currencies
-        url = f"https://api.metals.dev/v1/latest?api_key={METALS_DEV_API_KEY}&currency=USD&unit=toz"
-        response = requests.get(url, timeout=10)
-
-        if response.status_code != 200:
-            logger.warning(f"Metals.Dev currencies API returned status {response.status_code}")
-            return None
-
-        data = response.json()
-        if data.get('status') != 'success':
-            logger.warning(f"Metals.Dev currencies error: {data.get('error_message', 'Unknown error')}")
-            return None
-
-        # The API returns rates as "how much 1 USD is worth in foreign currency"
-        # But we need "how many target currency per 1 USD" for conversion
-        # The rates are already in the format we need (1/rate gives us multiplier)
         currencies = data.get('currencies', {})
 
         # Convert to the format we need: CAD rate means 1 USD = X CAD
@@ -123,7 +139,7 @@ def fetch_metals_dev_currencies(base_currency="USD"):
         return converted
 
     except Exception as e:
-        logger.error(f"Metals.Dev currencies fetch failed: {str(e)}")
+        logger.error(f"Metals.Dev currencies extraction failed: {str(e)}")
         return None
 
 def fetch_yfinance_prices():
