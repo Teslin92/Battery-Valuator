@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'service': 'Battery Valuator API'})
+    import os
+    api_key_set = bool(os.environ.get('METALS_DEV_API_KEY', ''))
+    return jsonify({
+        'status': 'healthy',
+        'service': 'Battery Valuator API',
+        'metals_dev_api_key_configured': api_key_set
+    })
 
 @app.route('/api/market-data', methods=['GET'])
 def get_market_data():
