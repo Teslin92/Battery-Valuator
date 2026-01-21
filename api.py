@@ -19,11 +19,18 @@ logger = logging.getLogger(__name__)
 def health_check():
     """Health check endpoint"""
     import os
-    api_key_set = bool(os.environ.get('METALS_DEV_API_KEY', ''))
+    api_key = os.environ.get('METALS_DEV_API_KEY', '')
+    api_key_set = bool(api_key)
+    # Show first 4 chars of key if set (for debugging)
+    key_preview = f"{api_key[:4]}..." if len(api_key) > 4 else "not set"
+    # List all env vars containing 'METAL' (for debugging)
+    metal_vars = [k for k in os.environ.keys() if 'METAL' in k.upper()]
     return jsonify({
         'status': 'healthy',
         'service': 'Battery Valuator API',
-        'metals_dev_api_key_configured': api_key_set
+        'metals_dev_api_key_configured': api_key_set,
+        'key_preview': key_preview,
+        'metal_env_vars_found': metal_vars
     })
 
 @app.route('/api/market-data', methods=['GET'])
