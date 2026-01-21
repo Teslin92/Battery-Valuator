@@ -38,8 +38,8 @@ def fetch_metals_dev_prices():
         return None
 
     try:
-        # Fetch LME authority prices (Nickel, Copper, Aluminum)
-        url = f"https://api.metals.dev/v1/metal/authority?api_key={METALS_DEV_API_KEY}&authority=lme"
+        # Fetch latest prices (includes LME metals)
+        url = f"https://api.metals.dev/v1/latest?api_key={METALS_DEV_API_KEY}&currency=USD&unit=toz"
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
@@ -54,17 +54,20 @@ def fetch_metals_dev_prices():
         prices = {}
         metals = data.get('metals', {})
 
-        # LME prices are typically in USD per tonne
+        # Metals.Dev returns prices in USD per troy ounce
+        # Convert to USD per tonne: 1 tonne = 32,150.7 troy ounces
+        TOZ_PER_TONNE = 32150.7
+
         if 'lme_nickel' in metals:
-            prices['Ni'] = metals['lme_nickel']
+            prices['Ni'] = metals['lme_nickel'] * TOZ_PER_TONNE
             logger.info(f"Nickel (Metals.Dev): ${prices['Ni']:.2f}/tonne")
 
         if 'lme_copper' in metals:
-            prices['Cu'] = metals['lme_copper']
+            prices['Cu'] = metals['lme_copper'] * TOZ_PER_TONNE
             logger.info(f"Copper (Metals.Dev): ${prices['Cu']:.2f}/tonne")
 
         if 'lme_aluminum' in metals:
-            prices['Al'] = metals['lme_aluminum']
+            prices['Al'] = metals['lme_aluminum'] * TOZ_PER_TONNE
             logger.info(f"Aluminum (Metals.Dev): ${prices['Al']:.2f}/tonne")
 
         return prices if prices else None
@@ -91,7 +94,8 @@ def fetch_metals_dev_currencies(base_currency="USD"):
         return None
 
     try:
-        url = f"https://api.metals.dev/v1/currencies?api_key={METALS_DEV_API_KEY}&base={base_currency}"
+        # Use latest endpoint which includes currencies
+        url = f"https://api.metals.dev/v1/latest?api_key={METALS_DEV_API_KEY}&currency=USD&unit=toz"
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
@@ -103,7 +107,20 @@ def fetch_metals_dev_currencies(base_currency="USD"):
             logger.warning(f"Metals.Dev currencies error: {data.get('error_message', 'Unknown error')}")
             return None
 
-        return data.get('currencies', {})
+        # The API returns rates as "how much 1 USD is worth in foreign currency"
+        # But we need "how many target currency per 1 USD" for conversion
+        # The rates are already in the format we need (1/rate gives us multiplier)
+        currencies = data.get('currencies', {})
+
+        # Convert to the format we need: CAD rate means 1 USD = X CAD
+        # The API gives us rates where higher = stronger USD
+        # We need to invert: if CAD = 0.72, then 1 USD = 1/0.72 = 1.38 CAD
+        converted = {}
+        for curr, rate in currencies.items():
+            if rate > 0:
+                converted[curr.lower()] = 1.0 / rate
+
+        return converted
 
     except Exception as e:
         logger.error(f"Metals.Dev currencies fetch failed: {str(e)}")
