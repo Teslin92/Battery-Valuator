@@ -26,11 +26,13 @@ def health_check():
 
     # Test Metals.Dev API
     metals_dev_status = "not tested"
+    metals_dev_response = None
     if api_key:
         try:
-            url = f"https://api.metals.dev/v1/metal/authority?api_key={api_key}&authority=lme"
+            url = f"https://api.metals.dev/v1/latest?api_key={api_key}&currency=USD&unit=toz"
             r = req.get(url, timeout=10)
             data = r.json()
+            metals_dev_response = data
             if data.get('status') == 'success':
                 metals_dev_status = f"working - got {len(data.get('metals', {}))} metals"
             else:
@@ -43,7 +45,8 @@ def health_check():
         'service': 'Battery Valuator API',
         'metals_dev_api_key_configured': api_key_set,
         'key_preview': key_preview,
-        'metals_dev_api_status': metals_dev_status
+        'metals_dev_api_status': metals_dev_status,
+        'metals_dev_sample': metals_dev_response
     })
 
 @app.route('/api/market-data', methods=['GET'])
