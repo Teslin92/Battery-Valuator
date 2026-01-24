@@ -1005,6 +1005,173 @@ def calculate_sensitivity():
         }), 500
 
 
+@app.route('/api/compare-lots', methods=['POST'])
+def compare_lots():
+    """
+    Compare multiple lots of battery material side by side.
+
+    Request body:
+        {
+            "currency": "USD",
+            "lots": [
+                {
+                    "name": "Lot A - Samsung",
+                    "weight_kg": 5000,
+                    "assays": {"Nickel": 0.22, "Cobalt": 0.08, "Lithium": 0.04}
+                },
+                {
+                    "name": "Lot B - LG",
+                    "weight_kg": 3000,
+                    "assays": {"Nickel": 0.18, "Cobalt": 0.05, "Lithium": 0.035}
+                }
+            ]
+        }
+
+    Returns comparison showing value, $/kg, and ranking for each lot.
+    """
+    try:
+        data = request.get_json()
+
+        currency = data.get('currency', 'USD')
+        lots = data.get('lots', [])
+
+        if not lots or len(lots) < 2:
+            return jsonify({
+                'success': False,
+                'error': 'At least 2 lots required for comparison'
+            }), 400
+
+        if len(lots) > 10:
+            return jsonify({
+                'success': False,
+                'error': 'Maximum 10 lots allowed per comparison'
+            }), 400
+
+        # Get current market prices
+        market_data = backend.get_market_data(currency)
+
+        # Standard recovery and payable rates
+        recovery_rates = {
+            'Nickel': 0.95, 'Cobalt': 0.95, 'Lithium': 0.85,
+            'Copper': 0.95, 'Aluminum': 0.90, 'Manganese': 0.85,
+            'Iron': 0.85, 'Phosphorus': 0.0
+        }
+        payable_pct = {
+            'Nickel': 0.80, 'Cobalt': 0.75, 'Lithium': 0.30,
+            'Copper': 0.80, 'Aluminum': 0.70, 'Manganese': 0.60,
+            'Iron': 0.0, 'Phosphorus': 0.0
+        }
+        metal_to_price = {
+            'Nickel': 'Ni', 'Cobalt': 'Co', 'Lithium': 'Li',
+            'Copper': 'Cu', 'Aluminum': 'Al', 'Manganese': 'Mn',
+            'Iron': 'Fe', 'Phosphorus': 'P'
+        }
+
+        # Process each lot
+        lot_results = []
+
+        for i, lot in enumerate(lots):
+            lot_name = lot.get('name', f'Lot {i+1}')
+            weight_kg = lot.get('weight_kg', 0)
+            assays = lot.get('assays', {})
+
+            if not weight_kg or weight_kg <= 0:
+                lot_results.append({
+                    'name': lot_name,
+                    'error': 'Invalid weight'
+                })
+                continue
+
+            # Ensure Iron and Phosphorus exist
+            if 'Iron' not in assays:
+                assays['Iron'] = 0.0
+            if 'Phosphorus' not in assays:
+                assays['Phosphorus'] = 0.0
+
+            # Detect chemistry
+            chemistry = backend.detect_chemistry(assays)
+
+            # Calculate value
+            total_value = 0.0
+            metal_values = {}
+
+            for metal, assay in assays.items():
+                if assay > 0 and metal in metal_to_price:
+                    price_key = metal_to_price[metal]
+                    price_per_kg = market_data.get(price_key, 0.0)
+
+                    contained = weight_kg * assay
+                    recoverable = contained * recovery_rates.get(metal, 0.0)
+                    value = recoverable * price_per_kg * payable_pct.get(metal, 0.0)
+
+                    metal_values[metal] = round(value, 2)
+                    total_value += value
+
+            value_per_kg = total_value / weight_kg if weight_kg > 0 else 0
+            value_per_tonne = value_per_kg * 1000
+
+            lot_results.append({
+                'name': lot_name,
+                'weight_kg': weight_kg,
+                'weight_tonnes': round(weight_kg / 1000, 3),
+                'chemistry': chemistry,
+                'total_value': round(total_value, 2),
+                'value_per_kg': round(value_per_kg, 4),
+                'value_per_tonne': round(value_per_tonne, 2),
+                'metal_values': metal_values,
+                'grades': {k: round(v * 100, 2) for k, v in assays.items() if v > 0}
+            })
+
+        # Sort by value per kg (best first) and add ranking
+        valid_lots = [l for l in lot_results if 'error' not in l]
+        valid_lots.sort(key=lambda x: x['value_per_kg'], reverse=True)
+
+        for rank, lot in enumerate(valid_lots, 1):
+            lot['rank'] = rank
+            if rank == 1:
+                lot['recommendation'] = 'Best value per kg'
+
+        # Calculate comparison stats
+        if len(valid_lots) >= 2:
+            best = valid_lots[0]
+            worst = valid_lots[-1]
+            spread_pct = ((best['value_per_kg'] - worst['value_per_kg']) / worst['value_per_kg'] * 100) if worst['value_per_kg'] > 0 else 0
+
+            comparison_stats = {
+                'best_lot': best['name'],
+                'best_value_per_kg': best['value_per_kg'],
+                'worst_lot': worst['name'],
+                'worst_value_per_kg': worst['value_per_kg'],
+                'spread_pct': round(spread_pct, 1),
+                'total_weight_kg': sum(l['weight_kg'] for l in valid_lots),
+                'total_value': round(sum(l['total_value'] for l in valid_lots), 2)
+            }
+        else:
+            comparison_stats = {}
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'currency': currency,
+                'price_date': market_data.get('timestamp', 'Unknown'),
+                'lots': lot_results,
+                'comparison': comparison_stats,
+                'notes': [
+                    'Lots ranked by value per kg (highest = best)',
+                    f'Price spread between best and worst: {comparison_stats.get("spread_pct", 0):.1f}%' if comparison_stats else '',
+                    'Values based on current market prices and typical recovery rates'
+                ]
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Lot comparison error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/bid-report', methods=['POST'])
 def generate_bid_report():
     """
