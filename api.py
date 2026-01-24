@@ -842,6 +842,169 @@ def get_value_view():
         }), 500
 
 
+@app.route('/api/sensitivity', methods=['POST'])
+def calculate_sensitivity():
+    """
+    Sensitivity analysis - shows how valuation changes with price movements.
+
+    Request body:
+        {
+            "currency": "USD",
+            "weight_kg": 1000,
+            "assays": {
+                "Nickel": 0.205,
+                "Cobalt": 0.062,
+                "Lithium": 0.025,
+                ...
+            },
+            "scenarios": [-20, -10, 0, 10, 20]  # Optional: % changes to test
+        }
+
+    Returns valuation at each price scenario for each major metal.
+    """
+    try:
+        data = request.get_json()
+
+        currency = data.get('currency', 'USD')
+        weight_kg = data.get('weight_kg', 0)
+        assays = data.get('assays', {})
+        scenarios = data.get('scenarios', [-20, -10, 0, 10, 20])
+
+        if not weight_kg or weight_kg <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Missing or invalid weight_kg parameter'
+            }), 400
+
+        if not assays:
+            return jsonify({
+                'success': False,
+                'error': 'Missing assays parameter'
+            }), 400
+
+        # Ensure Iron and Phosphorus exist
+        if 'Iron' not in assays:
+            assays['Iron'] = 0.0
+        if 'Phosphorus' not in assays:
+            assays['Phosphorus'] = 0.0
+
+        # Auto-detect chemistry
+        chemistry = backend.detect_chemistry(assays)
+        chemistry_info = backend.CHEMISTRIES.get(chemistry, {})
+
+        # Get current market prices
+        market_data = backend.get_market_data(currency)
+
+        # Standard recovery and payable rates
+        recovery_rates = {
+            'Nickel': 0.95, 'Cobalt': 0.95, 'Lithium': 0.85,
+            'Copper': 0.95, 'Aluminum': 0.90, 'Manganese': 0.85,
+            'Iron': 0.85, 'Phosphorus': 0.0
+        }
+        payable_pct = {
+            'Nickel': 0.80, 'Cobalt': 0.75, 'Lithium': 0.30,
+            'Copper': 0.80, 'Aluminum': 0.70, 'Manganese': 0.60,
+            'Iron': 0.0, 'Phosphorus': 0.0
+        }
+        metal_to_price = {
+            'Nickel': 'Ni', 'Cobalt': 'Co', 'Lithium': 'Li',
+            'Copper': 'Cu', 'Aluminum': 'Al', 'Manganese': 'Mn',
+            'Iron': 'Fe', 'Phosphorus': 'P'
+        }
+
+        # Calculate base value
+        def calc_total_value(price_adjustments=None):
+            """Calculate total value with optional price adjustments (as multipliers)"""
+            if price_adjustments is None:
+                price_adjustments = {}
+
+            total = 0.0
+            breakdown = {}
+            for metal, assay in assays.items():
+                if assay > 0 and metal in metal_to_price:
+                    price_key = metal_to_price[metal]
+                    base_price = market_data.get(price_key, 0.0)
+                    adjusted_price = base_price * price_adjustments.get(metal, 1.0)
+
+                    contained = weight_kg * assay
+                    recoverable = contained * recovery_rates.get(metal, 0.0)
+                    value = recoverable * adjusted_price * payable_pct.get(metal, 0.0)
+
+                    breakdown[metal] = round(value, 2)
+                    total += value
+
+            return round(total, 2), breakdown
+
+        # Base case
+        base_value, base_breakdown = calc_total_value()
+
+        # Determine which metals to analyze (only those with meaningful value)
+        metals_to_analyze = [m for m, v in base_breakdown.items() if v > 0]
+
+        # Build sensitivity matrix
+        sensitivity_results = {}
+
+        for metal in metals_to_analyze:
+            metal_scenarios = []
+            for pct_change in scenarios:
+                multiplier = 1.0 + (pct_change / 100.0)
+                adjustments = {metal: multiplier}
+                scenario_value, _ = calc_total_value(adjustments)
+                value_change = scenario_value - base_value
+                pct_impact = (value_change / base_value * 100) if base_value > 0 else 0
+
+                metal_scenarios.append({
+                    'price_change_pct': pct_change,
+                    'total_value': scenario_value,
+                    'value_change': round(value_change, 2),
+                    'impact_pct': round(pct_impact, 2)
+                })
+
+            sensitivity_results[metal] = metal_scenarios
+
+        # Calculate which metal has the biggest impact
+        max_impact_metal = None
+        max_impact = 0
+        for metal, scenarios_data in sensitivity_results.items():
+            # Look at the +20% scenario impact
+            for s in scenarios_data:
+                if s['price_change_pct'] == 20:
+                    if abs(s['impact_pct']) > max_impact:
+                        max_impact = abs(s['impact_pct'])
+                        max_impact_metal = metal
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'summary': {
+                    'weight_kg': weight_kg,
+                    'currency': currency,
+                    'chemistry': chemistry,
+                    'chemistry_name': chemistry_info.get('name', 'Unknown'),
+                    'base_value': base_value,
+                    'value_per_tonne': round((base_value / weight_kg) * 1000, 2) if weight_kg > 0 else 0,
+                    'most_sensitive_to': max_impact_metal,
+                    'price_date': market_data.get('timestamp', 'Unknown')
+                },
+                'base_breakdown': base_breakdown,
+                'sensitivity': sensitivity_results,
+                'scenarios_tested': scenarios,
+                'notes': [
+                    f'A 20% increase in {max_impact_metal} price would increase value by {max_impact:.1f}%' if max_impact_metal else '',
+                    'Sensitivity shows how your material value changes with metal price movements',
+                    'Use this to understand your price risk exposure'
+                ]
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Sensitivity analysis error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/bid-report', methods=['POST'])
 def generate_bid_report():
     """
