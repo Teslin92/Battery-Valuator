@@ -1,0 +1,272 @@
+# Battery Valuator - Improvement Roadmap
+
+## Strategic Direction: Layered Disclosure (Option B)
+
+**Core Insight:** Two distinct user personas with different needs:
+
+| | **OEMs** | **Traders/Recyclers** |
+|---|----------|----------------------|
+| **Primary need** | "What is my scrap worth?" | "How do I bid competitively?" |
+| **Cares about** | Material value, recovery potential | Value + costs + sensitivities |
+| **Doesn't need** | Processing costs | To *share* their cost data |
+| **Output** | Simple valuation report | Bid document (hides margins) |
+
+**Approach:** Start simple (serves OEMs), reveal complexity on demand (serves Traders), exportable reports that hide internal assumptions.
+
+---
+
+## Phase 1: Foundation (Priority)
+
+### 1.1 LFP Chemistry Support
+**Problem:** Current tool is NMC-focused. LFP batteries (Li, Fe, P) show near-zero value because there's no Ni/Co.
+
+**Changes Required:**
+- [ ] Add Iron (Fe) to metal list in `backend.py`
+- [ ] Add Phosphorus (P) tracking (even if low value)
+- [ ] Add chemistry selector: "NMC" vs "LFP" vs "LCO" vs "Mixed/Unknown"
+- [ ] Adjust validation ranges for LFP (higher Li%, no Ni/Co expected)
+- [ ] LFP-specific product pathways:
+  - Lithium recovery (same as NMC)
+  - Iron phosphate (FePO4) recovery potential
+  - Graphite recovery value
+- [ ] Update COA parser to recognize Fe, P patterns
+
+**LFP Typical Composition:**
+| Metal | LFP Range | NMC Range |
+|-------|-----------|-----------|
+| Li | 4-7% | 3-7% |
+| Fe | 30-35% | 0-2% |
+| P | 15-20% | 0% |
+| Ni | 0% | 10-50% |
+| Co | 0% | 3-20% |
+
+### 1.2 Value View (Simple Mode)
+**For OEMs who just want to know "what's my scrap worth?"**
+
+- [ ] Simplified UI mode showing only:
+  - Material composition (from COA or manual entry)
+  - Chemistry type (auto-detected or manual)
+  - Estimated recoverable value (total)
+  - Recovery potential by metal
+- [ ] Hide processing costs, OPEX, margins
+- [ ] Clean, professional appearance for sharing
+
+### 1.3 Bid Report Generator
+**For Traders who need to send quotes without revealing internals**
+
+- [ ] Configurable export (PDF/CSV)
+- [ ] Include/exclude toggles:
+  - ✅ Material composition
+  - ✅ Estimated recovery potential
+  - ✅ Current market prices (optional)
+  - ✅ Transportation cost (manual input)
+  - ✅ Net value to seller
+  - ❌ Processing costs (hidden)
+  - ❌ Trader's margin (hidden)
+  - ❌ Sensitivity analysis (hidden)
+- [ ] Professional formatting with company branding option
+- [ ] Date stamp and validity period
+
+### 1.4 Fix Known Bug
+- [ ] Black Mass shredding cost conditional logic (documented in LOVABLE_FIX_PROMPT.md)
+
+---
+
+## Phase 2: Transportation Advisory
+
+### 2.1 Route-Based Notifications
+**Like travel advisories for battery materials**
+
+Structure: Origin → Destination triggers relevant advisories
+
+**Advisory Categories:**
+1. **Regulatory Classification**
+   - Hazardous waste status
+   - UN shipping classification (UN3480, UN3481, etc.)
+   - Basel Convention implications
+
+2. **Documentation Checklist**
+   - Required permits
+   - Customs declarations
+   - Environmental certificates
+   - Insurance requirements
+
+3. **Route Restrictions**
+   - OECD vs non-OECD restrictions (EU black mass)
+   - Country-specific bans
+   - Port/carrier restrictions
+
+4. **Cost Considerations**
+   - Typical cost ranges by mode (truck, rail, sea)
+   - Transit time estimates
+   - Special handling requirements
+
+### 2.2 Initial Routes to Support
+| Route | Key Considerations |
+|-------|-------------------|
+| Canada → USA | EPA notification, customs documentation, USMCA rules |
+| USA → Canada | TDG regulations, ECCC permits |
+| EU Internal | ADR compliance, transboundary notification |
+| EU → Non-OECD | **BLOCKED** - Basel Convention (black mass = hazardous) |
+| EU → OECD (non-EU) | Prior Informed Consent procedure |
+| Asia → North America | IMDG code, carrier restrictions, SOC considerations |
+| USA Internal | DOT hazmat, state-specific rules |
+
+### 2.3 Data Structure
+```python
+TRANSPORT_ADVISORIES = {
+    ("CA", "US"): {
+        "classification": "Hazardous waste (may apply)",
+        "checklist": [
+            "EPA Consent for transboundary movement",
+            "Manifest documentation",
+            "Customs declaration (HS code 8549.31)",
+            "Carrier hazmat certification",
+        ],
+        "warnings": [
+            "Some US states have additional requirements",
+            "Transit through certain ports may have restrictions",
+        ],
+        "estimated_cost_range": "$150-400/tonne (truck)",
+        "transit_time": "3-7 days",
+    },
+    ("EU", "non-OECD"): {
+        "classification": "PROHIBITED",
+        "warnings": [
+            "Black mass classified as hazardous waste under EU regulations",
+            "Export to non-OECD countries prohibited under Basel Convention",
+            "Violations subject to significant penalties",
+        ],
+    },
+    # ... more routes
+}
+```
+
+---
+
+## Phase 3: Trader Power Features
+
+### 3.1 Configurable Recovery Rates
+- [ ] Per-metal recovery % inputs (currently fixed at 95%/85.5%)
+- [ ] Preset profiles: "Conservative", "Typical", "Optimistic"
+- [ ] Chemistry-specific defaults (LFP vs NMC)
+
+### 3.2 Sensitivity Analysis
+- [ ] Price sensitivity: ±10%, ±20% impact on value
+- [ ] Recovery sensitivity: impact of yield changes
+- [ ] Visual charts showing break-even points
+- [ ] "What-if" scenarios
+
+### 3.3 Historical Price Charts
+- [ ] 30/90/365 day price trends
+- [ ] Metal-by-metal breakdown
+- [ ] Export price data
+
+### 3.4 Saved Configurations
+- [ ] Save/load bid templates
+- [ ] Named configurations (e.g., "Q1 2025 Canada Pricing")
+- [ ] Quick recall for repeat customers
+
+---
+
+## Phase 4: Polish & Reliability
+
+### 4.1 Code Quality
+- [ ] Unit tests for calculation engine
+- [ ] Integration tests for API endpoints
+- [ ] Deduplicate logic between `app.py` and `backend.py`
+- [ ] Better error handling with user notifications
+
+### 4.2 UX Improvements
+- [ ] Loading states during API calls
+- [ ] Form validation before calculation
+- [ ] Calculation history
+- [ ] Mobile responsiveness
+
+---
+
+## Technical Implementation Notes
+
+### Adding LFP Support (Backend Changes)
+
+**File: `backend.py`**
+
+1. Update metal list:
+```python
+# Add to assays dict in parse_coa_text()
+assays = {
+    "Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0,
+    "Copper": 0.0, "Aluminum": 0.0, "Manganese": 0.0,
+    "Iron": 0.0, "Phosphorus": 0.0  # NEW
+}
+
+# Add to target_map
+"Iron": ["fe", "iron"],
+"Phosphorus": ["p", "phosphorus", "phos"]
+```
+
+2. Add chemistry detection:
+```python
+def detect_chemistry(assays):
+    """Auto-detect battery chemistry from assay profile."""
+    ni = assays.get('Nickel', 0)
+    co = assays.get('Cobalt', 0)
+    fe = assays.get('Iron', 0)
+
+    if fe > 0.20 and ni < 0.05 and co < 0.05:
+        return "LFP"
+    elif ni > 0.10 or co > 0.05:
+        return "NMC"  # or NCM, NCA
+    else:
+        return "Unknown"
+```
+
+3. Add LFP-specific valuation:
+```python
+# LFP value is primarily from Lithium recovery
+# Iron phosphate has some value but much lower than Ni/Co
+LFP_FACTORS = {
+    "Fe_recovery": 0.90,  # Iron recovery rate
+    "FePO4_value_per_kg": 0.50,  # Much lower than battery metals
+}
+```
+
+### Transportation Advisory (API Changes)
+
+**New endpoint: `/api/transport-advisory`**
+```python
+@app.route('/api/transport-advisory', methods=['POST'])
+def get_transport_advisory():
+    origin = request.json.get('origin_country')  # e.g., "CA"
+    destination = request.json.get('destination_country')  # e.g., "US"
+    material_type = request.json.get('material_type')  # e.g., "black_mass"
+
+    advisory = TRANSPORT_ADVISORIES.get((origin, destination), {})
+    return jsonify(advisory)
+```
+
+---
+
+## Questions to Resolve
+
+1. **LFP Product Pathways:** What do recyclers actually produce from LFP?
+   - Lithium carbonate/hydroxide (same as NMC)
+   - Iron phosphate (FePO4) - is this sold?
+   - Graphite recovery?
+
+2. **Transportation Data Source:** Where to get authoritative info?
+   - Basel Convention text
+   - EPA/ECCC regulations
+   - Industry associations (Battery Council International?)
+
+3. **Report Branding:** Should traders be able to add their logo/company info?
+
+4. **Offline Mode:** Should calculations work without API (using cached prices)?
+
+---
+
+## Deployment Notes
+
+- **Backend:** Railway (auto-deploys on push)
+- **Frontend:** Lovable/Vercel at https://batteryvaluator.vercel.app
+- **Branch:** `claude/strategize-improvements-aDKgJ`
