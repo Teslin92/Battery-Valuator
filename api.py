@@ -688,6 +688,324 @@ def detect_chemistry():
         }), 500
 
 
+@app.route('/api/value-view', methods=['POST'])
+def get_value_view():
+    """
+    Simple Value View for OEMs - shows what their scrap is worth.
+
+    Hides all processing costs, OPEX, and margins.
+    Shows only recoverable value and composition.
+
+    Request body:
+        {
+            "currency": "USD",
+            "weight_kg": 1000,
+            "assays": {
+                "Nickel": 0.205,
+                "Cobalt": 0.062,
+                "Lithium": 0.025,
+                ...
+            }
+        }
+
+    Returns simplified valuation showing:
+    - Material composition
+    - Chemistry type (auto-detected)
+    - Estimated recoverable value by metal
+    - Total estimated value
+    """
+    try:
+        data = request.get_json()
+
+        currency = data.get('currency', 'USD')
+        weight_kg = data.get('weight_kg', 0)
+        assays = data.get('assays', {})
+
+        if not weight_kg or weight_kg <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Missing or invalid weight_kg parameter'
+            }), 400
+
+        if not assays:
+            return jsonify({
+                'success': False,
+                'error': 'Missing assays parameter'
+            }), 400
+
+        # Ensure Iron and Phosphorus exist
+        if 'Iron' not in assays:
+            assays['Iron'] = 0.0
+        if 'Phosphorus' not in assays:
+            assays['Phosphorus'] = 0.0
+
+        # Auto-detect chemistry
+        chemistry = backend.detect_chemistry(assays)
+        chemistry_info = backend.CHEMISTRIES.get(chemistry, {})
+
+        # Get current market prices
+        market_data = backend.get_market_data(currency)
+
+        # Define typical recovery rates and payable percentages (industry standard)
+        # These represent what a recycler typically pays for contained metal
+        recovery_rates = {
+            'Nickel': 0.95,
+            'Cobalt': 0.95,
+            'Lithium': 0.85,
+            'Copper': 0.95,
+            'Aluminum': 0.90,
+            'Manganese': 0.85,
+            'Iron': 0.85,
+            'Phosphorus': 0.0  # Not recovered separately
+        }
+
+        # Typical payable percentages (what recyclers pay for metal content)
+        payable_pct = {
+            'Nickel': 0.80,
+            'Cobalt': 0.75,
+            'Lithium': 0.30,
+            'Copper': 0.80,
+            'Aluminum': 0.70,
+            'Manganese': 0.60,
+            'Iron': 0.0,  # Typically not paid for
+            'Phosphorus': 0.0
+        }
+
+        # Metal to price key mapping
+        metal_to_price = {
+            'Nickel': 'Ni',
+            'Cobalt': 'Co',
+            'Lithium': 'Li',
+            'Copper': 'Cu',
+            'Aluminum': 'Al',
+            'Manganese': 'Mn',
+            'Iron': 'Fe',
+            'Phosphorus': 'P'
+        }
+
+        # Calculate value for each metal
+        metal_values = []
+        total_value = 0.0
+
+        for metal, assay in assays.items():
+            if assay > 0 and metal in metal_to_price:
+                price_key = metal_to_price[metal]
+                price_per_kg = market_data.get(price_key, 0.0)
+
+                contained_mass = weight_kg * assay
+                recoverable_mass = contained_mass * recovery_rates.get(metal, 0.0)
+                estimated_value = recoverable_mass * price_per_kg * payable_pct.get(metal, 0.0)
+
+                if estimated_value > 0:
+                    metal_values.append({
+                        'metal': metal,
+                        'grade_pct': round(assay * 100, 2),
+                        'contained_kg': round(contained_mass, 2),
+                        'recoverable_kg': round(recoverable_mass, 2),
+                        'recovery_rate_pct': round(recovery_rates.get(metal, 0.0) * 100, 0),
+                        'estimated_value': round(estimated_value, 2)
+                    })
+                    total_value += estimated_value
+
+        # Sort by value (highest first)
+        metal_values.sort(key=lambda x: x['estimated_value'], reverse=True)
+
+        # Calculate per-tonne value for easy comparison
+        per_tonne_value = (total_value / weight_kg) * 1000 if weight_kg > 0 else 0
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'summary': {
+                    'weight_kg': weight_kg,
+                    'currency': currency,
+                    'chemistry': chemistry,
+                    'chemistry_name': chemistry_info.get('name', 'Unknown'),
+                    'total_estimated_value': round(total_value, 2),
+                    'value_per_tonne': round(per_tonne_value, 2),
+                    'price_date': market_data.get('timestamp', 'Unknown')
+                },
+                'metal_breakdown': metal_values,
+                'notes': [
+                    'Values based on current market prices and typical industry recovery rates',
+                    'Actual offers may vary based on material condition, volume, and processor terms',
+                    f'Chemistry auto-detected as {chemistry_info.get("name", chemistry)}'
+                ]
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Value view error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/bid-report', methods=['POST'])
+def generate_bid_report():
+    """
+    Generate a bid report for traders to send to suppliers.
+
+    Includes material value but HIDES internal costs and margins.
+    Can be exported/shared with counterparties.
+
+    Request body:
+        {
+            "currency": "USD",
+            "weight_kg": 1000,
+            "assays": {...},
+            "offered_price_per_kg": 2.50,  # Optional: trader's offered price
+            "validity_days": 7,  # Optional: quote validity period
+            "transport_origin": "CA",  # Optional: for transport notes
+            "transport_destination": "US",  # Optional
+            "include_transport_advisory": true,  # Optional
+            "include_market_prices": true,  # Optional
+            "company_name": "ABC Recycling",  # Optional: for branding
+            "reference_number": "Q-2025-001"  # Optional
+        }
+    """
+    try:
+        data = request.get_json()
+
+        currency = data.get('currency', 'USD')
+        weight_kg = data.get('weight_kg', 0)
+        assays = data.get('assays', {})
+        offered_price = data.get('offered_price_per_kg', None)
+        validity_days = data.get('validity_days', 7)
+        include_transport = data.get('include_transport_advisory', False)
+        include_prices = data.get('include_market_prices', True)
+        company_name = data.get('company_name', None)
+        reference = data.get('reference_number', None)
+
+        if not weight_kg or weight_kg <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Missing or invalid weight_kg parameter'
+            }), 400
+
+        if not assays:
+            return jsonify({
+                'success': False,
+                'error': 'Missing assays parameter'
+            }), 400
+
+        # Ensure Iron and Phosphorus exist
+        if 'Iron' not in assays:
+            assays['Iron'] = 0.0
+        if 'Phosphorus' not in assays:
+            assays['Phosphorus'] = 0.0
+
+        # Auto-detect chemistry
+        chemistry = backend.detect_chemistry(assays)
+        chemistry_info = backend.CHEMISTRIES.get(chemistry, {})
+
+        # Get market data
+        market_data = backend.get_market_data(currency)
+
+        from datetime import datetime, timedelta
+
+        report_date = datetime.now().strftime('%Y-%m-%d')
+        valid_until = (datetime.now() + timedelta(days=validity_days)).strftime('%Y-%m-%d')
+
+        # Build composition table
+        composition = []
+        metal_to_price = {'Nickel': 'Ni', 'Cobalt': 'Co', 'Lithium': 'Li',
+                          'Copper': 'Cu', 'Aluminum': 'Al', 'Manganese': 'Mn',
+                          'Iron': 'Fe', 'Phosphorus': 'P'}
+
+        for metal, assay in assays.items():
+            if assay > 0 and metal in metal_to_price:
+                entry = {
+                    'metal': metal,
+                    'grade_pct': round(assay * 100, 2),
+                    'contained_kg': round(weight_kg * assay, 2)
+                }
+                if include_prices:
+                    price_key = metal_to_price[metal]
+                    entry['market_price_per_kg'] = round(market_data.get(price_key, 0.0), 2)
+                composition.append(entry)
+
+        # Sort by grade (highest first)
+        composition.sort(key=lambda x: x['grade_pct'], reverse=True)
+
+        # Calculate offered total if price provided
+        offered_total = None
+        if offered_price is not None:
+            offered_total = round(weight_kg * offered_price, 2)
+
+        # Build report
+        report = {
+            'report_info': {
+                'type': 'Battery Material Purchase Quote',
+                'date': report_date,
+                'valid_until': valid_until,
+                'reference': reference,
+                'company': company_name
+            },
+            'material': {
+                'weight_kg': weight_kg,
+                'weight_tonnes': round(weight_kg / 1000, 3),
+                'chemistry': chemistry,
+                'chemistry_name': chemistry_info.get('name', 'Unknown'),
+                'composition': composition
+            },
+            'pricing': {
+                'currency': currency
+            }
+        }
+
+        if include_prices:
+            report['pricing']['market_price_date'] = market_data.get('timestamp', 'Unknown')
+
+        if offered_price is not None:
+            report['pricing']['offered_price_per_kg'] = offered_price
+            report['pricing']['total_offered_value'] = offered_total
+
+        # Add transport advisory if requested
+        if include_transport:
+            origin = data.get('transport_origin', '').upper()
+            destination = data.get('transport_destination', '').upper()
+
+            if origin and destination:
+                route_key = get_transport_route_key(origin, destination)
+                advisory = TRANSPORT_ADVISORIES.get(route_key)
+
+                if advisory:
+                    report['transport'] = {
+                        'route': advisory.get('route', f"{origin} → {destination}"),
+                        'status': advisory.get('classification', {}).get('status', 'Unknown'),
+                        'key_requirements': [item['item'] for item in advisory.get('checklist', [])[:3]],
+                        'estimated_cost': advisory.get('cost_estimate', {}).get('truck', 'Contact for quote'),
+                        'transit_time': advisory.get('transit_time', 'Varies')
+                    }
+
+        # IMPORTANT: These are intentionally NOT included in the report:
+        # - Processing costs
+        # - Refining OPEX
+        # - Trader's margin
+        # - Sensitivity analysis
+        # - Internal payable rates
+
+        report['disclaimer'] = (
+            "This quote is subject to material inspection and verification of specifications. "
+            "Final pricing may be adjusted based on actual assay results. "
+            f"Quote valid until {valid_until}."
+        )
+
+        return jsonify({
+            'success': True,
+            'data': report
+        })
+
+    except Exception as e:
+        logger.error(f"Bid report error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     # For local development
     app.run(debug=True, host='0.0.0.0', port=5000)

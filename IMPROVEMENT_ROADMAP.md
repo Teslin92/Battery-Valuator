@@ -43,35 +43,44 @@
 | Ni | 0% | 10-50% |
 | Co | 0% | 3-20% |
 
-### 1.2 Value View (Simple Mode)
+### 1.2 Value View (Simple Mode) ✅ IMPLEMENTED
 **For OEMs who just want to know "what's my scrap worth?"**
 
-- [ ] Simplified UI mode showing only:
+- [x] Simplified API mode showing only:
   - Material composition (from COA or manual entry)
-  - Chemistry type (auto-detected or manual)
+  - Chemistry type (auto-detected)
   - Estimated recoverable value (total)
   - Recovery potential by metal
-- [ ] Hide processing costs, OPEX, margins
-- [ ] Clean, professional appearance for sharing
+  - Value per tonne for comparison
+- [x] Hide processing costs, OPEX, margins
+- [x] Clean JSON output for frontend integration
 
-### 1.3 Bid Report Generator
+**New API Endpoint:**
+- `POST /api/value-view` - Simple valuation for OEMs
+
+### 1.3 Bid Report Generator ✅ IMPLEMENTED
 **For Traders who need to send quotes without revealing internals**
 
-- [ ] Configurable export (PDF/CSV)
-- [ ] Include/exclude toggles:
+- [x] Configurable JSON report
+- [x] Include/exclude options:
   - ✅ Material composition
   - ✅ Estimated recovery potential
-  - ✅ Current market prices (optional)
-  - ✅ Transportation cost (manual input)
-  - ✅ Net value to seller
-  - ❌ Processing costs (hidden)
-  - ❌ Trader's margin (hidden)
-  - ❌ Sensitivity analysis (hidden)
-- [ ] Professional formatting with company branding option
-- [ ] Date stamp and validity period
+  - ✅ Current market prices (optional toggle)
+  - ✅ Transportation advisory (optional)
+  - ✅ Offered price to seller
+  - ❌ Processing costs (hidden by design)
+  - ❌ Trader's margin (hidden by design)
+  - ❌ Sensitivity analysis (hidden by design)
+- [x] Company branding option
+- [x] Reference number support
+- [x] Date stamp and validity period
+
+**New API Endpoint:**
+- `POST /api/bid-report` - Generate shareable bid report
 
 ### 1.4 Fix Known Bug
 - [ ] Black Mass shredding cost conditional logic (documented in LOVABLE_FIX_PROMPT.md)
+  - **Note:** This is a frontend (Lovable) fix - backend already handles 0 cost correctly
 
 ---
 
