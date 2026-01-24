@@ -71,8 +71,88 @@ FACTORS = {
     "Ni_to_Sulphate": 4.48,      # Ni → NiSO4·6H2O
     "Co_to_Sulphate": 4.77,      # Co → CoSO4·7H2O
     "Li_to_Carbonate": 5.32,     # Li → Li2CO3
-    "Li_to_Hydroxide": 6.05      # Li → LiOH·H2O
+    "Li_to_Hydroxide": 6.05,     # Li → LiOH·H2O
+    "Fe_to_FePO4": 2.70          # Fe → FePO4 (iron phosphate recovery from LFP)
 }
+
+# Supported battery chemistries
+CHEMISTRIES = {
+    "NMC": {
+        "name": "Nickel Manganese Cobalt (NMC/NCM)",
+        "primary_metals": ["Nickel", "Cobalt", "Lithium", "Manganese"],
+        "typical_grades": {
+            "Nickel": (0.10, 0.50),    # 10-50%
+            "Cobalt": (0.03, 0.20),    # 3-20%
+            "Lithium": (0.03, 0.07),   # 3-7%
+            "Manganese": (0.02, 0.15), # 2-15%
+        }
+    },
+    "LFP": {
+        "name": "Lithium Iron Phosphate (LFP)",
+        "primary_metals": ["Lithium", "Iron", "Phosphorus"],
+        "typical_grades": {
+            "Lithium": (0.04, 0.07),   # 4-7%
+            "Iron": (0.30, 0.35),      # 30-35%
+            "Phosphorus": (0.15, 0.20) # 15-20%
+        }
+    },
+    "LCO": {
+        "name": "Lithium Cobalt Oxide (LCO)",
+        "primary_metals": ["Lithium", "Cobalt"],
+        "typical_grades": {
+            "Lithium": (0.05, 0.08),   # 5-8%
+            "Cobalt": (0.40, 0.60),    # 40-60%
+        }
+    },
+    "NCA": {
+        "name": "Nickel Cobalt Aluminum (NCA)",
+        "primary_metals": ["Nickel", "Cobalt", "Lithium", "Aluminum"],
+        "typical_grades": {
+            "Nickel": (0.45, 0.55),    # 45-55%
+            "Cobalt": (0.08, 0.12),    # 8-12%
+            "Lithium": (0.05, 0.08),   # 5-8%
+            "Aluminum": (0.01, 0.03),  # 1-3%
+        }
+    }
+}
+
+def detect_chemistry(assays):
+    """
+    Auto-detect battery chemistry from assay profile.
+
+    Args:
+        assays: dict of metal assays as decimals
+
+    Returns:
+        str: Detected chemistry code (NMC, LFP, LCO, NCA) or "Unknown"
+    """
+    ni = assays.get('Nickel', 0)
+    co = assays.get('Cobalt', 0)
+    fe = assays.get('Iron', 0)
+    mn = assays.get('Manganese', 0)
+    al = assays.get('Aluminum', 0)
+
+    # LFP: High iron, low/no nickel and cobalt
+    if fe > 0.20 and ni < 0.05 and co < 0.05:
+        return "LFP"
+
+    # LCO: High cobalt, low/no nickel
+    if co > 0.35 and ni < 0.10:
+        return "LCO"
+
+    # NCA: High nickel, some cobalt, notable aluminum
+    if ni > 0.40 and co > 0.05 and al > 0.005:
+        return "NCA"
+
+    # NMC: Nickel and/or cobalt with manganese
+    if (ni > 0.05 or co > 0.03) and mn > 0.01:
+        return "NMC"
+
+    # Default to NMC if any nickel/cobalt present
+    if ni > 0.05 or co > 0.03:
+        return "NMC"
+
+    return "Unknown"
 
 def fetch_metals_dev_prices():
     """
@@ -262,10 +342,13 @@ def get_market_data(target_currency="USD"):
         "Cu": 9200.00,    # LME Copper 3-month ($/tonne)
         "Al": 2500.00,    # LME Aluminum 3-month ($/tonne)
         "Mn": 1800.00,    # Manganese Metal 99.7% ($/tonne)
+        "Fe": 120.00,     # Iron/Steel scrap ($/tonne) - low value
+        "P": 0.00,        # Phosphorus - typically not recovered separately
         "NiSO4": 3800.00, # Battery-grade Nickel Sulphate ($/tonne)
         "CoSO4": 6500.00, # Battery-grade Cobalt Sulphate ($/tonne)
         "LCE": 14000.00,  # Lithium Carbonate Equivalent ($/tonne)
-        "LiOH": 15500.00  # Lithium Hydroxide Monohydrate ($/tonne)
+        "LiOH": 15500.00, # Lithium Hydroxide Monohydrate ($/tonne)
+        "FePO4": 800.00   # Iron Phosphate ($/tonne) - low value byproduct
     }
 
     # Try Metals.Dev first (best source for Ni, Cu, Al)
@@ -313,7 +396,10 @@ def parse_coa_text(text):
     """
     import re
 
-    assays = {"Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0, "Copper": 0.0, "Aluminum": 0.0, "Manganese": 0.0}
+    assays = {
+        "Nickel": 0.0, "Cobalt": 0.0, "Lithium": 0.0, "Copper": 0.0,
+        "Aluminum": 0.0, "Manganese": 0.0, "Iron": 0.0, "Phosphorus": 0.0
+    }
     text = text.lower().replace(",", "")
 
     target_map = {
@@ -322,7 +408,9 @@ def parse_coa_text(text):
         "Lithium": ["li", "lithium"],
         "Copper": ["cu", "copper"],
         "Aluminum": ["al", "aluminum", "aluminium"],
-        "Manganese": ["mn", "manganese"]
+        "Manganese": ["mn", "manganese"],
+        "Iron": ["fe", "iron"],
+        "Phosphorus": ["p", "phosphorus", "phos"]
     }
 
     for line in text.split('\n'):
@@ -345,6 +433,7 @@ def parse_coa_text(text):
 def calculate_valuation(input_params):
     """
     Main calculation engine for battery material valuation.
+    Supports NMC, LFP, LCO, and NCA chemistries.
 
     Args:
         input_params: dict containing all input parameters
@@ -364,9 +453,26 @@ def calculate_valuation(input_params):
     assays = input_params['assays']
     assay_basis = input_params.get('assay_basis', 'Final Powder')
 
+    # Ensure Iron and Phosphorus exist in assays (for backwards compatibility)
+    if 'Iron' not in assays:
+        assays['Iron'] = 0.0
+    if 'Phosphorus' not in assays:
+        assays['Phosphorus'] = 0.0
+
+    # Chemistry detection (auto-detect or use provided)
+    chemistry = input_params.get('chemistry', None)
+    if chemistry is None or chemistry == 'Auto':
+        chemistry = detect_chemistry(assays)
+
     # Pricing
     metal_prices = input_params['metal_prices']  # in target currency per kg
     payables = input_params['payables']  # as decimals
+
+    # Ensure Fe and P have default payables
+    if 'Fe' not in payables:
+        payables['Fe'] = 0.0  # Iron typically not paid for directly
+    if 'P' not in payables:
+        payables['P'] = 0.0   # Phosphorus not recovered separately
 
     # Costs
     shredding_cost_per_ton = input_params.get('shredding_cost_per_ton', 0.0)
@@ -384,52 +490,62 @@ def calculate_valuation(input_params):
     # Calculate net black mass weight
     net_bm_weight = gross_weight * yield_pct
 
+    # All metals to track (including LFP metals)
+    all_metals = ['Nickel', 'Cobalt', 'Lithium', 'Copper', 'Aluminum', 'Manganese', 'Iron', 'Phosphorus']
+
     # 1. MASS BALANCE
     bm_grades = {}
     masses = {}
 
     if assay_basis == "Whole Battery":
-        for metal in ['Nickel', 'Cobalt', 'Lithium', 'Copper', 'Aluminum', 'Manganese']:
-            masses[metal] = (gross_weight * assays[metal]) * mech_recovery
+        for metal in all_metals:
+            masses[metal] = (gross_weight * assays.get(metal, 0.0)) * mech_recovery
             if net_bm_weight > 0:
                 bm_grades[metal] = (masses[metal] / net_bm_weight) * 100
             else:
                 bm_grades[metal] = 0.0
     else:
-        for metal in ['Nickel', 'Cobalt', 'Lithium', 'Copper', 'Aluminum', 'Manganese']:
-            masses[metal] = net_bm_weight * assays[metal]
-            bm_grades[metal] = assays[metal] * 100
+        for metal in all_metals:
+            masses[metal] = net_bm_weight * assays.get(metal, 0.0)
+            bm_grades[metal] = assays.get(metal, 0.0) * 100
 
-    # VALIDATION: Check for unrealistic assay values
+    # VALIDATION: Check for unrealistic assay values based on chemistry
     warnings = []
-    if bm_grades['Nickel'] > 60:
-        warnings.append(f"Nickel grade ({bm_grades['Nickel']:.1f}%) exceeds typical black mass range (10-60%)")
-    if bm_grades['Cobalt'] > 25:
-        warnings.append(f"Cobalt grade ({bm_grades['Cobalt']:.1f}%) exceeds typical black mass range (3-25%)")
-    if bm_grades['Lithium'] > 10:
-        warnings.append(f"Lithium grade ({bm_grades['Lithium']:.1f}%) exceeds typical black mass range (1-10%)")
+
+    if chemistry == "LFP":
+        # LFP-specific validation
+        if bm_grades['Iron'] > 40:
+            warnings.append(f"Iron grade ({bm_grades['Iron']:.1f}%) exceeds typical LFP black mass range (30-35%)")
+        if bm_grades['Lithium'] > 10:
+            warnings.append(f"Lithium grade ({bm_grades['Lithium']:.1f}%) exceeds typical LFP range (4-7%)")
+        if bm_grades['Nickel'] > 5:
+            warnings.append(f"Nickel detected ({bm_grades['Nickel']:.1f}%) - unusual for LFP chemistry")
+        if bm_grades['Cobalt'] > 5:
+            warnings.append(f"Cobalt detected ({bm_grades['Cobalt']:.1f}%) - unusual for LFP chemistry")
+    else:
+        # NMC/LCO/NCA validation
+        if bm_grades['Nickel'] > 60:
+            warnings.append(f"Nickel grade ({bm_grades['Nickel']:.1f}%) exceeds typical black mass range (10-60%)")
+        if bm_grades['Cobalt'] > 65:
+            warnings.append(f"Cobalt grade ({bm_grades['Cobalt']:.1f}%) exceeds typical black mass range (3-60%)")
+        if bm_grades['Lithium'] > 10:
+            warnings.append(f"Lithium grade ({bm_grades['Lithium']:.1f}%) exceeds typical black mass range (3-8%)")
 
     total_grade = sum(bm_grades.values())
     if total_grade > 100:
         warnings.append(f"Total metal content ({total_grade:.1f}%) exceeds 100%")
 
     # 2. COSTS
-    costs = {}
-    for metal in ['Nickel', 'Cobalt', 'Lithium', 'Copper', 'Aluminum', 'Manganese']:
-        metal_key = metal  # Use full name for prices dict
-        if metal == 'Nickel':
-            price_key = 'Ni'
-        elif metal == 'Cobalt':
-            price_key = 'Co'
-        elif metal == 'Lithium':
-            price_key = 'Li'
-        elif metal == 'Copper':
-            price_key = 'Cu'
-        elif metal == 'Aluminum':
-            price_key = 'Al'
-        elif metal == 'Manganese':
-            price_key = 'Mn'
+    # Metal name to price key mapping
+    metal_to_price_key = {
+        'Nickel': 'Ni', 'Cobalt': 'Co', 'Lithium': 'Li',
+        'Copper': 'Cu', 'Aluminum': 'Al', 'Manganese': 'Mn',
+        'Iron': 'Fe', 'Phosphorus': 'P'
+    }
 
+    costs = {}
+    for metal in all_metals:
+        price_key = metal_to_price_key.get(metal, metal[:2])
         costs[metal] = masses[metal] * metal_prices.get(price_key, 0.0) * payables.get(price_key, 0.0)
 
     material_cost = sum(costs.values())
@@ -450,43 +566,75 @@ def calculate_valuation(input_params):
     rec_ni = hydromet_recovery
     rec_co = hydromet_recovery
     rec_li = hydromet_recovery * 0.90
+    rec_fe = 0.85  # Iron recovery from LFP (typically lower)
 
     # Salt prices
     price_ni_sulf = market_data['NiSO4']
     price_co_sulf = market_data['CoSO4']
     price_li_salt = market_data['LCE'] if li_product == "Carbonate (LCE)" else market_data['LiOH']
+    price_fepo4 = market_data.get('FePO4', 0.80)  # Iron phosphate price per kg
     mhp_pay_ni = 0.85
     mhp_pay_co = 0.80
 
-    # Calculate revenues
-    if ni_product == "Sulphates (Battery Salt)":
-        qty_ni_prod = masses['Nickel'] * rec_ni * FACTORS["Ni_to_Sulphate"]
-        rev_ni = qty_ni_prod * price_ni_sulf
-        production_data.append({"Product": "Nickel Sulphate", "Mass (kg)": qty_ni_prod, "Revenue": rev_ni})
+    # Initialize revenue components
+    rev_ni = 0.0
+    rev_co = 0.0
+    rev_fe = 0.0
 
-        qty_co_prod = masses['Cobalt'] * rec_co * FACTORS["Co_to_Sulphate"]
-        rev_co = qty_co_prod * price_co_sulf
-        production_data.append({"Product": "Cobalt Sulphate", "Mass (kg)": qty_co_prod, "Revenue": rev_co})
+    # Calculate revenues based on chemistry
+    if chemistry == "LFP":
+        # LFP: Revenue primarily from Lithium + Iron Phosphate
+        # Iron Phosphate recovery (FePO4)
+        qty_fe_prod = masses['Iron'] * rec_fe * FACTORS["Fe_to_FePO4"]
+        rev_fe = qty_fe_prod * price_fepo4
+        production_data.append({
+            "Product": "Iron Phosphate (FePO4)",
+            "Mass (kg)": qty_fe_prod,
+            "Revenue": rev_fe,
+            "Note": "Low-value byproduct"
+        })
+
+        # No significant Ni/Co revenue for LFP
+        if masses['Nickel'] > 0:
+            production_data.append({
+                "Product": "Nickel (trace)",
+                "Mass (kg)": masses['Nickel'],
+                "Revenue": 0.0,
+                "Note": "Below economic recovery threshold"
+            })
     else:
-        qty_ni_prod = masses['Nickel'] * rec_ni
-        rev_ni = qty_ni_prod * metal_prices['Ni'] * mhp_pay_ni
-        production_data.append({"Product": "MHP (Ni Content)", "Mass (kg)": qty_ni_prod, "Revenue": rev_ni})
+        # NMC/LCO/NCA: Revenue from Ni/Co products
+        if ni_product == "Sulphates (Battery Salt)":
+            qty_ni_prod = masses['Nickel'] * rec_ni * FACTORS["Ni_to_Sulphate"]
+            rev_ni = qty_ni_prod * price_ni_sulf
+            production_data.append({"Product": "Nickel Sulphate", "Mass (kg)": qty_ni_prod, "Revenue": rev_ni})
 
-        qty_co_prod = masses['Cobalt'] * rec_co
-        rev_co = qty_co_prod * metal_prices['Co'] * mhp_pay_co
-        production_data.append({"Product": "MHP (Co Content)", "Mass (kg)": qty_co_prod, "Revenue": rev_co})
+            qty_co_prod = masses['Cobalt'] * rec_co * FACTORS["Co_to_Sulphate"]
+            rev_co = qty_co_prod * price_co_sulf
+            production_data.append({"Product": "Cobalt Sulphate", "Mass (kg)": qty_co_prod, "Revenue": rev_co})
+        else:
+            qty_ni_prod = masses['Nickel'] * rec_ni
+            rev_ni = qty_ni_prod * metal_prices.get('Ni', 0.0) * mhp_pay_ni
+            production_data.append({"Product": "MHP (Ni Content)", "Mass (kg)": qty_ni_prod, "Revenue": rev_ni})
 
+            qty_co_prod = masses['Cobalt'] * rec_co
+            rev_co = qty_co_prod * metal_prices.get('Co', 0.0) * mhp_pay_co
+            production_data.append({"Product": "MHP (Co Content)", "Mass (kg)": qty_co_prod, "Revenue": rev_co})
+
+    # Lithium revenue (common to all chemistries)
     factor_li = FACTORS["Li_to_Carbonate"] if li_product == "Carbonate (LCE)" else FACTORS["Li_to_Hydroxide"]
     qty_li_prod = masses['Lithium'] * rec_li * factor_li
     rev_li = qty_li_prod * price_li_salt
     production_data.append({"Product": li_product, "Mass (kg)": qty_li_prod, "Revenue": rev_li})
 
-    total_rev = rev_ni + rev_co + rev_li
+    total_rev = rev_ni + rev_co + rev_li + rev_fe
     net_profit = total_rev - material_cost - total_opex
     margin_pct = (net_profit / total_rev) * 100 if total_rev > 0 else 0
 
     # Return complete results
     return {
+        'chemistry': chemistry,
+        'chemistry_name': CHEMISTRIES.get(chemistry, {}).get('name', 'Unknown'),
         'net_bm_weight': net_bm_weight,
         'bm_grades': bm_grades,
         'masses': masses,

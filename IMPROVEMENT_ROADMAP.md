@@ -17,19 +17,22 @@
 
 ## Phase 1: Foundation (Priority)
 
-### 1.1 LFP Chemistry Support
+### 1.1 LFP Chemistry Support ✅ IMPLEMENTED
 **Problem:** Current tool is NMC-focused. LFP batteries (Li, Fe, P) show near-zero value because there's no Ni/Co.
 
-**Changes Required:**
-- [ ] Add Iron (Fe) to metal list in `backend.py`
-- [ ] Add Phosphorus (P) tracking (even if low value)
-- [ ] Add chemistry selector: "NMC" vs "LFP" vs "LCO" vs "Mixed/Unknown"
-- [ ] Adjust validation ranges for LFP (higher Li%, no Ni/Co expected)
-- [ ] LFP-specific product pathways:
+**Changes Completed:**
+- [x] Add Iron (Fe) to metal list in `backend.py`
+- [x] Add Phosphorus (P) tracking (even if low value)
+- [x] Add chemistry selector: "NMC" vs "LFP" vs "LCO" vs "NCA" + auto-detection
+- [x] Adjust validation ranges for LFP (higher Li%, no Ni/Co expected)
+- [x] LFP-specific product pathways:
   - Lithium recovery (same as NMC)
-  - Iron phosphate (FePO4) recovery potential
-  - Graphite recovery value
-- [ ] Update COA parser to recognize Fe, P patterns
+  - Iron phosphate (FePO4) recovery with stoichiometric factor
+- [x] Update COA parser to recognize Fe, P patterns
+
+**New API Endpoints:**
+- `GET /api/chemistries` - List supported chemistries
+- `POST /api/detect-chemistry` - Auto-detect from assays
 
 **LFP Typical Composition:**
 | Metal | LFP Range | NMC Range |
@@ -72,45 +75,51 @@
 
 ---
 
-## Phase 2: Transportation Advisory
+## Phase 2: Transportation Advisory ✅ IMPLEMENTED
 
 ### 2.1 Route-Based Notifications
 **Like travel advisories for battery materials**
 
 Structure: Origin → Destination triggers relevant advisories
 
-**Advisory Categories:**
+**Advisory Categories (all implemented):**
 1. **Regulatory Classification**
    - Hazardous waste status
    - UN shipping classification (UN3480, UN3481, etc.)
    - Basel Convention implications
 
 2. **Documentation Checklist**
-   - Required permits
+   - Required permits with descriptions
    - Customs declarations
    - Environmental certificates
    - Insurance requirements
+   - Marked as required/optional
 
 3. **Route Restrictions**
-   - OECD vs non-OECD restrictions (EU black mass)
-   - Country-specific bans
+   - OECD vs non-OECD restrictions (EU black mass = PROHIBITED)
+   - Country-specific warnings
    - Port/carrier restrictions
 
 4. **Cost Considerations**
    - Typical cost ranges by mode (truck, rail, sea)
    - Transit time estimates
-   - Special handling requirements
+   - Special handling notes
 
-### 2.2 Initial Routes to Support
-| Route | Key Considerations |
-|-------|-------------------|
-| Canada → USA | EPA notification, customs documentation, USMCA rules |
-| USA → Canada | TDG regulations, ECCC permits |
-| EU Internal | ADR compliance, transboundary notification |
-| EU → Non-OECD | **BLOCKED** - Basel Convention (black mass = hazardous) |
-| EU → OECD (non-EU) | Prior Informed Consent procedure |
-| Asia → North America | IMDG code, carrier restrictions, SOC considerations |
-| USA Internal | DOT hazmat, state-specific rules |
+**New API Endpoints:**
+- `POST /api/transport-advisory` - Get advisory for origin→destination
+- `GET /api/transport-routes` - List all available routes
+
+### 2.2 Implemented Routes
+| Route | Status | Key Feature |
+|-------|--------|-------------|
+| Canada → USA | ✅ | EPA notification, RCRA manifest checklist |
+| USA → Canada | ✅ | TDG regulations, ECCC permits |
+| EU Internal | ✅ | ADR compliance, waste shipment notification |
+| EU → Non-OECD | ✅ | **PROHIBITED** with alternatives listed |
+| EU → OECD (non-EU) | ✅ | Prior Informed Consent procedure |
+| Asia → North America | ✅ | IMDG code, SOC requirements |
+| USA Internal | ✅ | DOT hazmat, state-specific rules |
+| Canada Internal | ✅ | TDG requirements, provincial permits |
 
 ### 2.3 Data Structure
 ```python
