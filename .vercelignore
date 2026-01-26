@@ -1,0 +1,27 @@
+# Ignore Python backend files
+*.py
+*.pyc
+__pycache__/
+.streamlit/
+Procfile
+Procfile.api
+requirements.txt
+runtime.txt
+
+# Ignore documentation
+docs/
+*.md
+!frontend/README.md
+
+# Ignore git
+.git/
+.gitignore
+
+# Ignore dev files
+.vscode/
+.idea/
+*.log
+.DS_Store
+
+# Ignore scripts
+setup-monorepo.sh
