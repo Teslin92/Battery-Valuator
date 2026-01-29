@@ -104,12 +104,12 @@ export const TransportationSection = ({
   };
 
   return (
-    <Card className="bg-white shadow-sm border-border">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Truck className="h-5 w-5" />
+    <Card className="bg-card rounded-xl border-border card-shadow">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground uppercase tracking-wider">
+          <Truck className="h-4 w-4 text-primary" />
           Transportation & Logistics
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Origin & Destination */}
@@ -230,7 +230,7 @@ export const TransportationSection = ({
         </div>
 
         {/* DDR Checkbox */}
-        <div className="flex items-start space-x-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="flex items-start space-x-3 p-4 bg-warning/10 border border-warning/30 rounded-lg">
           <Checkbox
             id="isDDR"
             checked={transportData.isDDR}
@@ -261,13 +261,13 @@ export const TransportationSection = ({
 
         {/* Transport Cost Estimate */}
         {transportEstimate && !transportData.manualOverride && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="p-4 bg-profit/10 border border-profit/30 rounded-lg">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-green-700" />
-                <span className="font-semibold text-green-900">Estimated Transport Cost</span>
+                <DollarSign className="h-5 w-5 text-profit" />
+                <span className="font-semibold text-foreground">Estimated Transport Cost</span>
               </div>
-              <span className="text-2xl font-bold text-green-700">
+              <span className="text-2xl font-bold text-profit">
                 ${transportEstimate.estimated_cost?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -275,31 +275,31 @@ export const TransportationSection = ({
             {transportEstimate.vehicle_type && (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-green-700">Vehicle/Container:</span>
-                  <span className="font-medium text-green-900">{transportEstimate.vehicle_type}</span>
+                  <span className="text-muted-foreground">Vehicle/Container:</span>
+                  <span className="font-medium text-foreground">{transportEstimate.vehicle_type}</span>
                 </div>
                 {transportEstimate.num_vehicles && (
                   <div className="flex justify-between">
-                    <span className="text-green-700">Quantity:</span>
-                    <span className="font-medium text-green-900">{transportEstimate.num_vehicles}</span>
+                    <span className="text-muted-foreground">Quantity:</span>
+                    <span className="font-medium text-foreground">{transportEstimate.num_vehicles}</span>
                   </div>
                 )}
                 {transportEstimate.capacity_per_vehicle_kg && (
                   <div className="flex justify-between">
-                    <span className="text-green-700">Capacity:</span>
-                    <span className="font-medium text-green-900">{transportEstimate.capacity_per_vehicle_kg.toLocaleString()} kg each</span>
+                    <span className="text-muted-foreground">Capacity:</span>
+                    <span className="font-medium text-foreground">{transportEstimate.capacity_per_vehicle_kg.toLocaleString()} kg each</span>
                   </div>
                 )}
                 {transportEstimate.utilization_pct !== null && transportEstimate.utilization_pct !== undefined && (
                   <div className="flex justify-between">
-                    <span className="text-green-700">Utilization:</span>
-                    <span className="font-medium text-green-900">{transportEstimate.utilization_pct}%</span>
+                    <span className="text-muted-foreground">Utilization:</span>
+                    <span className="font-medium text-foreground">{transportEstimate.utilization_pct}%</span>
                   </div>
                 )}
                 {transportEstimate.cost_per_kg && (
                   <div className="flex justify-between">
-                    <span className="text-green-700">Cost per kg:</span>
-                    <span className="font-medium text-green-900">${transportEstimate.cost_per_kg.toFixed(2)}/kg</span>
+                    <span className="text-muted-foreground">Cost per kg:</span>
+                    <span className="font-medium text-foreground">${transportEstimate.cost_per_kg.toFixed(2)}/kg</span>
                   </div>
                 )}
               </div>
@@ -307,7 +307,7 @@ export const TransportationSection = ({
             
             {/* Show the correct note based on actual data */}
             {transportEstimate.sizing_note && (
-              <p className="text-xs text-green-700 mt-3 pt-3 border-t border-green-200">
+              <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-profit/30">
                 {transportEstimate.sizing_note}
               </p>
             )}
@@ -316,10 +316,10 @@ export const TransportationSection = ({
         
         {/* Loading indicator */}
         {isLoadingEstimate && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg">
             <div className="flex items-center gap-2">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-700 border-t-transparent rounded-full"></div>
-              <span className="text-sm text-blue-700">Calculating transport cost...</span>
+              <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+              <span className="text-sm text-foreground">Calculating transport cost...</span>
             </div>
           </div>
         )}

@@ -50,12 +50,12 @@ export const WasteRegulatoryAdvisory = ({
 
   if (loading) {
     return (
-      <Card className="bg-white shadow-sm border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+      <Card className="bg-card rounded-xl border-border card-shadow">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground uppercase tracking-wider">
+            <Shield className="h-4 w-4 text-primary" />
             Regulatory Advisory
-          </CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">Loading regulatory information...</p>
@@ -71,36 +71,36 @@ export const WasteRegulatoryAdvisory = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'allowed':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-profit/20 text-profit border-profit/30';
       case 'restricted':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-warning/20 text-warning-foreground border-warning/30';
       case 'blocked':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-destructive/20 text-destructive border-destructive/30';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'allowed':
-        return <CheckCircle2 className="h-5 w-5 text-green-600" />;
+        return <CheckCircle2 className="h-5 w-5 text-profit" />;
       case 'restricted':
-        return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
+        return <AlertTriangle className="h-5 w-5 text-warning" />;
       case 'blocked':
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
+        return <AlertCircle className="h-5 w-5 text-destructive" />;
       default:
-        return <AlertCircle className="h-5 w-5 text-gray-600" />;
+        return <AlertCircle className="h-5 w-5 text-muted-foreground" />;
     }
   };
 
   return (
-    <Card className="bg-white shadow-sm border-border">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5" />
+    <Card className="bg-card rounded-xl border-border card-shadow">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground uppercase tracking-wider">
+          <Shield className="h-4 w-4 text-primary" />
           Waste Battery Regulatory Advisory
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Route Status */}
@@ -143,7 +143,7 @@ export const WasteRegulatoryAdvisory = ({
                   <ul className="space-y-1">
                     {routeAdvisory.requirements.map((req, idx) => (
                       <li key={idx} className="text-sm flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                         <span>{req}</span>
                       </li>
                     ))}
@@ -216,7 +216,7 @@ export const WasteRegulatoryAdvisory = ({
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-blue-600 hover:underline"
+                            className="flex items-center gap-1 text-primary hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
                             {key.replace(/_/g, ' ')}
@@ -292,11 +292,11 @@ export const WasteRegulatoryAdvisory = ({
 
                   <CollapsibleContent className="space-y-2 px-3">
                     {regulatoryRequirements.checklist.basel_convention.map((item, idx) => (
-                      <div key={idx} className="p-3 bg-blue-50 rounded-lg text-sm">
+                      <div key={idx} className="p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm">
                         <p className="font-medium">{item.name}</p>
                         <p className="text-muted-foreground text-xs mt-1">{item.description}</p>
                         {item.applies_to && (
-                          <p className="text-xs text-blue-700 mt-1">
+                          <p className="text-xs text-primary mt-1">
                             Applies to: {item.applies_to}
                           </p>
                         )}
@@ -356,7 +356,7 @@ export const WasteRegulatoryAdvisory = ({
                             href={permit.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Apply online
@@ -391,7 +391,7 @@ export const WasteRegulatoryAdvisory = ({
 
                 <CollapsibleContent className="space-y-3 px-3">
                   {regulatoryRequirements.checklist.packaging.un_classification && (
-                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+                    <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm">
                       <p className="font-medium">UN Classification</p>
                       <p className="text-xs mt-1">
                         {regulatoryRequirements.checklist.packaging.un_classification.un_number} -{' '}
@@ -407,7 +407,7 @@ export const WasteRegulatoryAdvisory = ({
                         {regulatoryRequirements.checklist.packaging.requirements.map(
                           (req, idx) => (
                             <li key={idx} className="text-xs flex items-start gap-2">
-                              <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 flex-shrink-0" />
+                              <CheckCircle2 className="h-3 w-3 text-profit mt-0.5 flex-shrink-0" />
                               <span>{req}</span>
                             </li>
                           )
@@ -447,7 +447,7 @@ export const WasteRegulatoryAdvisory = ({
                     <div className="grid gap-2">
                       {regulatoryRequirements.checklist.documentation.map((doc, idx) => (
                         <div key={idx} className="flex items-start gap-2 p-2 bg-muted rounded">
-                          <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                          <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium">{doc.name}</p>
                             <p className="text-xs text-muted-foreground">{doc.description}</p>

@@ -173,11 +173,11 @@ export function ResultsPanel({
               <p className="text-sm text-muted-foreground mb-1">Route Status</p>
               <div className="flex items-center gap-2">
                 {result.route_advisory.allowed ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <CheckCircle2 className="h-4 w-4 text-profit" />
                 ) : (
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
                 )}
-                <span className={`font-medium ${result.route_advisory.allowed ? 'text-green-700' : 'text-red-700'}`}>
+                <span className={`font-medium ${result.route_advisory.allowed ? 'text-profit' : 'text-destructive'}`}>
                   {result.route_advisory.status.toUpperCase()}
                 </span>
               </div>
@@ -192,38 +192,38 @@ export function ResultsPanel({
           
           {/* Vehicle/Container Information */}
           {result.transport_estimate && result.transport_estimate.vehicle_type && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-medium text-blue-900 mb-2">
+            <div className="mt-4 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+              <p className="text-sm font-medium text-foreground mb-2">
                 {result.transport_estimate.vehicle_type}
               </p>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {result.transport_estimate.num_vehicles && (
                   <div>
-                    <span className="text-blue-700">Quantity:</span>{' '}
+                    <span className="text-muted-foreground">Quantity:</span>{' '}
                     <span className="font-medium">{result.transport_estimate.num_vehicles}</span>
                   </div>
                 )}
                 {result.transport_estimate.capacity_per_vehicle_kg && (
                   <div>
-                    <span className="text-blue-700">Capacity:</span>{' '}
+                    <span className="text-muted-foreground">Capacity:</span>{' '}
                     <span className="font-medium">{result.transport_estimate.capacity_per_vehicle_kg.toLocaleString()} kg each</span>
                   </div>
                 )}
                 {result.transport_estimate.utilization_pct !== null && result.transport_estimate.utilization_pct !== undefined && (
                   <div>
-                    <span className="text-blue-700">Utilization:</span>{' '}
+                    <span className="text-muted-foreground">Utilization:</span>{' '}
                     <span className="font-medium">{result.transport_estimate.utilization_pct}%</span>
                   </div>
                 )}
                 {result.transport_estimate.cost_per_kg && (
                   <div>
-                    <span className="text-blue-700">Cost per kg:</span>{' '}
+                    <span className="text-muted-foreground">Cost per kg:</span>{' '}
                     <span className="font-medium">{formatCurrency(result.transport_estimate.cost_per_kg)}</span>
                   </div>
                 )}
               </div>
               {result.transport_estimate.sizing_note && (
-                <p className="text-xs text-blue-700 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   {result.transport_estimate.sizing_note}
                 </p>
               )}

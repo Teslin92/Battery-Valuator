@@ -39,7 +39,7 @@ export function GlobalSettings({
   const isUSD = currency === 'USD';
 
   return (
-    <div className="p-4 bg-card rounded-xl border border-border card-shadow">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="flex-1">
           <label className="text-sm font-medium text-muted-foreground block mb-2">
@@ -118,7 +118,7 @@ export function GlobalSettings({
       </div>
 
       {error && (
-        <div className="mt-3 p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2 text-sm">
+        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2 text-sm">
           <AlertTriangle className="h-4 w-4 text-warning" />
           <span className="text-warning-foreground">
             Unable to fetch live prices. Using fallback values.
@@ -127,7 +127,7 @@ export function GlobalSettings({
       )}
 
       {marketData?.fx_fallback_used && !error && (
-        <div className="mt-3 p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2 text-sm">
+        <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2 text-sm">
           <AlertTriangle className="h-4 w-4 text-warning" />
           <span className="text-warning-foreground">
             Using fallback exchange rates.

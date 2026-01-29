@@ -36,7 +36,7 @@ export function FeedstockSection({
   const isBlackMass = formData.feedType === 'Black Mass (Processed)';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground uppercase tracking-wider">
         <Package className="h-4 w-4 text-primary" />
         Feedstock & Pre-treatment
