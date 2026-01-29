@@ -232,9 +232,12 @@ export function useBatteryValuator() {
     // Include transport data in calculation so it affects totals
     // The backend will add transport_cost to total_opex and recalculate net_profit/margin
     if (transportData.origin && transportData.destination) {
-      // For truck mode, only include if distance is provided
-      const canIncludeTransport = transportData.mode !== 'truck' || transportData.distanceMiles;
-      if (canIncludeTransport) {
+      // If manual override is enabled with a cost, always include transport data
+      // Otherwise, for truck mode, only include if distance is provided
+      const hasManualCost = transportData.manualOverride && transportData.manualCost !== undefined && transportData.manualCost > 0;
+      const canCalculateAutomatically = transportData.mode !== 'truck' || transportData.distanceMiles;
+      
+      if (hasManualCost || canCalculateAutomatically) {
         request.transport_data = {
           origin: transportData.origin,
           destination: transportData.destination,
