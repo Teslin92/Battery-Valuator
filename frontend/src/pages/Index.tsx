@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { GlobalSettings } from '@/components/valuator/GlobalSettings';
 import { FeedstockSection } from '@/components/valuator/FeedstockSection';
 import { PricingSection } from '@/components/valuator/PricingSection';
+import { PostTreatmentSection } from '@/components/valuator/PostTreatmentSection';
 import { AssaySection } from '@/components/valuator/AssaySection';
 import { TransportationSection } from '@/components/valuator/TransportationSection';
 import { WasteRegulatoryAdvisory } from '@/components/valuator/WasteRegulatoryAdvisory';
@@ -168,12 +169,20 @@ const Index = () => {
               />
             </section>
 
-            {/* Metal Pricing & Refining */}
+            {/* Metal Pricing & Payables */}
             <section className="bg-card rounded-xl border border-border p-6 card-shadow">
               <PricingSection
                 formData={formData}
                 onUpdate={updateFormData}
                 marketData={marketData}
+              />
+            </section>
+
+            {/* Post-Treatment */}
+            <section className="bg-card rounded-xl border border-border p-6 card-shadow">
+              <PostTreatmentSection
+                formData={formData}
+                onUpdate={updateFormData}
               />
             </section>
 
