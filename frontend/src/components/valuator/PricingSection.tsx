@@ -66,7 +66,7 @@ export function PricingSection({
     <div key={key} className="space-y-2 pb-3 border-b border-border last:border-0 last:pb-0">
       {/* Metal name and live price */}
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-foreground">
+        <label className="text-xs font-medium text-muted-foreground">
           {label} ({symbol})
         </label>
         {marketData && (
