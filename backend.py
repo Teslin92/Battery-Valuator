@@ -506,3 +506,408 @@ def calculate_valuation(input_params):
             'refining': total_refining_cost
         }
     }
+
+
+# ============================================================================
+# LOGISTICS AND REGULATORY FUNCTIONS
+# ============================================================================
+
+def check_route_feasibility(origin: str, destination: str, material_type: str) -> dict:
+    """
+    Check if a shipping route is feasible based on regulations.
+    
+    Args:
+        origin: Origin country code (e.g., 'US', 'Canada')
+        destination: Destination country code
+        material_type: Type of material ('whole_batteries', 'black_mass', 'processed')
+    
+    Returns:
+        dict with status ('allowed', 'restricted', 'blocked'), requirements, warnings
+    """
+    from logistics_data import get_route_status, get_country_regulations
+    
+    route_info = get_route_status(origin, destination)
+    status = route_info.get('status', 'unknown')
+    
+    # Get regulatory frameworks
+    origin_regs = get_country_regulations(origin)
+    dest_regs = get_country_regulations(destination)
+    
+    # Build requirements list and initialize warnings early
+    requirements = list(route_info.get('requirements', []))  # Copy to avoid modifying source
+    warnings = []
+    info_notes = []
+    
+    # Add material-specific requirements (avoid duplicates)
+    # Classification logic:
+    # - whole_batteries: ONLY assembled cells with electrolyte (energized batteries)
+    # - black_mass: Electrode scrap (foils, jelly rolls), shredded material, powders
+    # - processed: Refined metals/compounds (lowest hazard)
+    
+    if material_type in ['black_mass', 'whole_batteries']:
+        if "Material classified as hazardous waste" not in requirements:
+            requirements.append("Material classified as hazardous waste")
+        if origin == 'US' and "RCRA Part B permit required for storage" not in requirements:
+            requirements.append("RCRA Part B permit required for storage")
+    elif material_type == 'processed':
+        # Processed/refined metals have lower regulatory burden
+        if "Material may qualify for reduced hazmat classification" not in requirements:
+            requirements.append("Material may qualify for reduced hazmat classification")
+    
+    # Additional requirements for whole batteries ONLY (assembled cells with electrolyte)
+    if material_type == 'whole_batteries':
+        if "UN 3480/3481 packaging required (assembled cells only)" not in requirements:
+            requirements.append("UN 3480/3481 packaging required (assembled cells only)")
+        if "State of charge documentation required" not in requirements:
+            requirements.append("State of charge documentation required")
+        info_notes.append("Note: Dry electrode scrap (foils/jelly rolls without electrolyte) should be classified as Black Mass")
+        if origin in ['EU', 'Germany', 'France', 'Netherlands', 'Belgium', 'Italy', 'Spain']:
+            # Check if EU export restriction applies (effective Nov 9, 2026 per EU Decision 2025/934)
+            from datetime import datetime
+            eu_restriction_date = datetime(2026, 11, 9)
+            current_date = datetime.now()
+            
+            # Check if destination is non-OECD
+            from logistics_data import COUNTRIES
+            dest_country_info = COUNTRIES.get(destination, {})
+            dest_oecd = dest_country_info.get('oecd_member', False)
+            
+            if not dest_oecd:
+                if current_date >= eu_restriction_date:
+                    status = 'blocked'
+                    if "EU Commission Decision 2025/934 prohibits export to non-OECD countries" not in requirements:
+                        requirements.append("EU Commission Decision 2025/934 prohibits export to non-OECD countries")
+                else:
+                    # Restriction not yet in effect
+                    days_until = (eu_restriction_date - current_date).days
+                    warnings.append(f"EU export restriction to non-OECD takes effect Nov 9, 2026 ({days_until} days from now)")
+                    if "EU export to non-OECD allowed until Nov 9, 2026" not in requirements:
+                        requirements.append("EU export to non-OECD allowed until Nov 9, 2026")
+    
+    # Add warnings based on status
+    if status == 'restricted':
+        warnings.append(f"Long processing time: {route_info.get('processing_time_days', 'varies')}")
+    
+    # Separate positive notes from warnings
+    if route_info.get('notes'):
+        note = route_info['notes']
+        # Positive/neutral notes go to info, negative ones to warnings
+        if any(positive in note.lower() for positive in ['common route', 'well-established', 'simplifies', 'strong infrastructure', 'easier']):
+            info_notes.append(note)
+        else:
+            warnings.append(note)
+    
+    # Add current_note if present (for time-sensitive regulations)
+    if route_info.get('current_note'):
+        warnings.append(route_info['current_note'])
+    
+    # Determine overall allowed status
+    allowed = status in ['allowed', 'allowed_until_nov_2026']
+    
+    return {
+        'allowed': allowed,
+        'status': status,
+        'requirements': requirements,
+        'warnings': warnings,
+        'info_notes': info_notes,
+        'processing_time': route_info.get('processing_time_days'),
+        'reason': route_info.get('reason'),
+        'effective_date': route_info.get('effective_date'),
+        'origin_regulations': {
+            'framework': origin_regs.get('framework'),
+            'authority': origin_regs.get('competent_authority')
+        },
+        'destination_regulations': {
+            'framework': dest_regs.get('framework'),
+            'authority': dest_regs.get('competent_authority')
+        }
+    }
+
+
+def get_transport_estimate(
+    origin: str,
+    destination: str,
+    mode: str,
+    weight_kg: float,
+    material_type: str = 'black_mass',
+    is_ddr: bool = False,
+    distance_miles: float = None
+) -> dict:
+    """
+    Calculate transportation cost estimate.
+    
+    Args:
+        origin: Origin country
+        destination: Destination country
+        mode: Transport mode ('ocean', 'air', 'truck')
+        weight_kg: Material weight in kilograms
+        material_type: Type of material
+        is_ddr: Whether batteries are damaged/defective/recalled
+        distance_miles: Distance in miles (required for truck)
+    
+    Returns:
+        dict with cost estimate and breakdown
+    """
+    from logistics_data import calculate_transport_cost
+    
+    # Convert kg to metric tons
+    weight_mt = weight_kg / 1000.0
+    
+    # Check for DDR restrictions
+    if is_ddr and mode == 'air':
+        return {
+            'error': 'DDR (Damaged/Defective/Recalled) batteries prohibited from air transport',
+            'estimated_cost': 0,
+            'mode': mode,
+            'alternative': 'Use ocean or truck transport for DDR batteries'
+        }
+    
+    # Calculate cost with realistic container/vehicle sizing
+    is_hazmat = material_type in ['whole_batteries', 'black_mass']
+    cost_result = calculate_transport_cost(mode, weight_mt, is_hazmat, distance_miles)
+    
+    # Handle error cases
+    if 'error' in cost_result:
+        return {
+            'error': cost_result['error'],
+            'estimated_cost': 0,
+            'mode': mode
+        }
+    
+    # Build comprehensive response with sizing information
+    return {
+        'estimated_cost': cost_result['cost'],
+        'mode': mode,
+        'weight_mt': weight_mt,
+        'weight_kg': weight_kg,
+        'is_hazmat': is_hazmat,
+        'is_ddr': is_ddr,
+        'vehicle_type': cost_result.get('vehicle_type'),
+        'num_vehicles': cost_result.get('num_vehicles'),
+        'capacity_per_vehicle_kg': cost_result.get('capacity_per_vehicle_kg'),
+        'total_capacity_kg': cost_result.get('total_capacity_kg'),
+        'utilization_pct': cost_result.get('utilization_pct'),
+        'cost_per_kg': cost_result.get('cost_per_kg'),
+        'breakdown': {
+            'base_cost': cost_result.get('base_cost', 0),
+            'hazmat_surcharge': cost_result.get('hazmat_surcharge', 0),
+            'fuel_surcharge': cost_result.get('fuel_surcharge', 0),
+            'total': cost_result['cost']
+        },
+        'currency': 'USD',
+        'note': cost_result.get('note', 'Actual costs vary by carrier, season, and volume'),
+        'sizing_note': cost_result.get('note'),
+        'manual_override_allowed': True
+    }
+
+
+def get_permit_checklist(origin: str, destination: str, material_type: str) -> dict:
+    """
+    Get checklist of permits and documentation required for shipment.
+    
+    Args:
+        origin: Origin country
+        destination: Destination country
+        material_type: Type of material
+    
+    Returns:
+        dict with permit checklist organized by category
+    """
+    from logistics_data import get_permit_requirements_for_route, PACKAGING_REQUIREMENTS
+    
+    permits = get_permit_requirements_for_route(origin, destination)
+    
+    # Get packaging requirements
+    packaging = PACKAGING_REQUIREMENTS.get(
+        'lithium_batteries' if material_type == 'whole_batteries' else 'black_mass',
+        {}
+    )
+    
+    # Build Basel Convention requirements
+    basel_requirements = []
+    from logistics_data import WASTE_REGULATIONS
+    basel_info = WASTE_REGULATIONS.get('Basel_Convention', {})
+    if basel_info.get('pic_required'):
+        basel_requirements.append({
+            'name': 'Prior Informed Consent (PIC)',
+            'description': 'Written consent from importing and transit countries',
+            'regulation': 'Basel Convention',
+            'required': True
+        })
+        
+        if material_type == 'black_mass':
+            basel_requirements.append({
+                'name': 'Annex VIII A1170 Classification',
+                'description': 'Waste batteries containing hazardous constituents',
+                'applies_to': 'Black mass and waste lithium-ion batteries',
+                'required': True
+            })
+    
+    # Organize checklist
+    checklist = {
+        'export_permits': permits,
+        'basel_convention': basel_requirements,
+        'packaging': {
+            'requirements': packaging.get('requirements', []),
+            'un_classification': packaging.get('un_classification', {}),
+            'regulations': packaging.get('regulations', [])
+        },
+        'documentation': [
+            {
+                'name': 'Commercial Invoice',
+                'required': True,
+                'description': 'Invoice showing value, quantity, HS code'
+            },
+            {
+                'name': 'Packing List',
+                'required': True,
+                'description': 'Detailed list of shipment contents'
+            },
+            {
+                'name': 'Bill of Lading / Air Waybill',
+                'required': True,
+                'description': 'Transport document from carrier'
+            },
+            {
+                'name': 'Safety Data Sheet (SDS)',
+                'required': True,
+                'description': 'Hazard information for material'
+            },
+            {
+                'name': 'Certificate of Origin',
+                'required': 'Varies by destination',
+                'description': 'Certifies country of origin'
+            }
+        ]
+    }
+    
+    return checklist
+
+
+def get_waste_regulations(origin: str, destination: str, material_type: str) -> dict:
+    """
+    Get detailed waste regulations for origin and destination.
+    
+    Args:
+        origin: Origin country
+        destination: Destination country  
+        material_type: Type of material
+    
+    Returns:
+        dict with regulatory details for both locations
+    """
+    from logistics_data import get_country_regulations, MATERIAL_CLASSIFICATIONS
+    
+    origin_regs = get_country_regulations(origin)
+    dest_regs = get_country_regulations(destination)
+    material_info = MATERIAL_CLASSIFICATIONS.get(material_type, {})
+    
+    return {
+        'material_classification': {
+            'type': material_type,
+            'description': material_info.get('description'),
+            'hazard_class': material_info.get('hazard_class'),
+            'waste_codes': material_info.get('typical_waste_codes', []),
+            'basel_annex': material_info.get('basel_annex')
+        },
+        'origin': {
+            'country': origin,
+            'framework': origin_regs.get('framework'),
+            'authority': origin_regs.get('competent_authority'),
+            'classification': origin_regs.get('classification', {}),
+            'export_requirements': origin_regs.get('export_requirements', {}),
+            'key_regulations': origin_regs.get('key_regulations', []),
+            'links': origin_regs.get('links', {})
+        },
+        'destination': {
+            'country': destination,
+            'framework': dest_regs.get('framework'),
+            'authority': dest_regs.get('competent_authority'),
+            'classification': dest_regs.get('classification', {}),
+            'import_requirements': dest_regs.get('import_requirements', {}),
+            'links': dest_regs.get('links', {})
+        }
+    }
+
+
+def calculate_valuation_with_transport(
+    gross_weight: float,
+    assays: dict,
+    payables: dict,
+    metal_prices: dict,
+    market_data: dict,
+    shredding_cost_per_ton: float,
+    elec_surcharge: float,
+    has_electrolyte: bool,
+    refining_opex_base: float,
+    hydromet_recovery: float,
+    ni_product: str,
+    li_product: str,
+    # New transport parameters
+    transport_data: dict = None
+) -> dict:
+    """
+    Extended valuation calculation including transportation costs.
+    
+    Args:
+        ... (all existing parameters)
+        transport_data: Optional dict with:
+            - origin: str
+            - destination: str
+            - mode: str ('ocean', 'air', 'truck')
+            - material_type: str
+            - is_ddr: bool
+            - distance_miles: float (for truck)
+    
+    Returns:
+        dict with valuation results including transport costs and regulatory info
+    """
+    # Run standard valuation
+    results = calculate_valuation(
+        gross_weight, assays, payables, metal_prices, market_data,
+        shredding_cost_per_ton, elec_surcharge, has_electrolyte,
+        refining_opex_base, hydromet_recovery, ni_product, li_product
+    )
+    
+    # Add transport data if provided
+    if transport_data:
+        try:
+            # Get transport estimate
+            transport_estimate = get_transport_estimate(
+                origin=transport_data.get('origin', 'US'),
+                destination=transport_data.get('destination', 'Canada'),
+                mode=transport_data.get('mode', 'ocean'),
+                weight_kg=gross_weight,
+                material_type=transport_data.get('material_type', 'black_mass'),
+                is_ddr=transport_data.get('is_ddr', False),
+                distance_miles=transport_data.get('distance_miles')
+            )
+            
+            # Check route feasibility
+            route_advisory = check_route_feasibility(
+                origin=transport_data.get('origin', 'US'),
+                destination=transport_data.get('destination', 'Canada'),
+                material_type=transport_data.get('material_type', 'black_mass')
+            )
+            
+            # Add transport cost to total OPEX
+            transport_cost = transport_estimate.get('estimated_cost', 0)
+            results['transport_cost'] = transport_cost
+            results['total_opex'] = results['total_opex'] + transport_cost
+            
+            # Recalculate profit and margin
+            results['net_profit'] = results['total_revenue'] - results['material_cost'] - results['total_opex']
+            results['margin_pct'] = (results['net_profit'] / results['total_revenue']) * 100 if results['total_revenue'] > 0 else 0
+            
+            # Add transport and regulatory info
+            results['transport_estimate'] = transport_estimate
+            results['route_advisory'] = route_advisory
+            
+            # Update cost breakdown
+            results['cost_breakdown']['transport'] = transport_cost
+            
+        except Exception as e:
+            logger.error(f"Error calculating transport costs: {str(e)}")
+            results['transport_error'] = str(e)
+    
+    return results

@@ -6,8 +6,9 @@ import { Separator } from '@/components/ui/separator';
 import { GlobalSettings } from '@/components/valuator/GlobalSettings';
 import { FeedstockSection } from '@/components/valuator/FeedstockSection';
 import { PricingSection } from '@/components/valuator/PricingSection';
-import { RefiningSection } from '@/components/valuator/RefiningSection';
 import { AssaySection } from '@/components/valuator/AssaySection';
+import { TransportationSection } from '@/components/valuator/TransportationSection';
+import { WasteRegulatoryAdvisory } from '@/components/valuator/WasteRegulatoryAdvisory';
 import { ResultsPanel } from '@/components/valuator/ResultsPanel';
 import { useBatteryValuator } from '@/hooks/useBatteryValuator';
 import html2canvas from 'html2canvas';
@@ -32,6 +33,10 @@ const Index = () => {
     handleCalculate,
     isCalculating,
     recoverableBlackMass,
+    transportData,
+    updateTransportData,
+    routeAdvisory,
+    regulatoryRequirements,
   } = useBatteryValuator();
 
   const handleExportPDF = async () => {
@@ -163,20 +168,33 @@ const Index = () => {
               />
             </section>
 
-            {/* Two-column grid for Pricing and Refining */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <section className="bg-card rounded-xl border border-border p-6 card-shadow">
-                <PricingSection
-                  formData={formData}
-                  onUpdate={updateFormData}
-                  marketData={marketData}
+            {/* Metal Pricing & Refining */}
+            <section className="bg-card rounded-xl border border-border p-6 card-shadow">
+              <PricingSection
+                formData={formData}
+                onUpdate={updateFormData}
+                marketData={marketData}
+              />
+            </section>
+
+            {/* Transportation Section */}
+            <section>
+              <TransportationSection
+                transportData={transportData}
+                onTransportDataChange={updateTransportData}
+                weightKg={formData.grossWeight}
+              />
+            </section>
+
+            {/* Regulatory Advisory */}
+            {(routeAdvisory || regulatoryRequirements) && (
+              <section>
+                <WasteRegulatoryAdvisory
+                  routeAdvisory={routeAdvisory}
+                  regulatoryRequirements={regulatoryRequirements}
                 />
               </section>
-
-              <section className="bg-card rounded-xl border border-border p-6 card-shadow">
-                <RefiningSection formData={formData} onUpdate={updateFormData} />
-              </section>
-            </div>
+            )}
           </div>
 
           {/* Calculate Button */}

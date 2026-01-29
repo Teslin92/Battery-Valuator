@@ -69,6 +69,7 @@ export interface CalculationRequest {
   shredding_cost_per_ton: number;
   elec_surcharge: number;
   has_electrolyte: boolean;
+  refining_enabled: boolean;
   refining_opex_base: number;
   ni_product: NiProduct;
   li_product: LiProduct;
@@ -114,6 +115,7 @@ export interface FormData {
   hasElectrolyte: boolean;
   elecSurcharge: number;
   shreddingCost: number;
+  refiningEnabled: boolean;
   refiningOpex: number;
   niProduct: NiProduct;
   liProduct: LiProduct;
@@ -169,4 +171,164 @@ export const METAL_LABELS: Record<string, string> = {
   cu: 'Copper',
   al: 'Aluminum',
   mn: 'Manganese',
+};
+
+// ============================================================================
+// TRANSPORT AND REGULATORY TYPES
+// ============================================================================
+
+export type TransportMode = 'ocean' | 'air' | 'truck';
+export type MaterialType = 'whole_batteries' | 'black_mass' | 'processed';
+export type RouteStatus = 'allowed' | 'restricted' | 'blocked' | 'unknown';
+
+export interface TransportData {
+  origin: string;
+  destination: string;
+  mode: TransportMode;
+  materialType: MaterialType;
+  isDDR: boolean; // Damaged/Defective/Recalled
+  weightKg: number;
+  distanceMiles?: number; // Required for truck mode
+  manualOverride?: boolean;
+  manualCost?: number;
+}
+
+export interface TransportEstimate {
+  estimated_cost: number;
+  mode: TransportMode;
+  weight_mt: number;
+  weight_kg: number;
+  is_hazmat: boolean;
+  is_ddr: boolean;
+  breakdown: {
+    base_cost: number;
+    hazmat_surcharge: number;
+    total: number;
+  };
+  currency: string;
+  note: string;
+  manual_override_allowed: boolean;
+  error?: string;
+  alternative?: string;
+}
+
+export interface RouteAdvisory {
+  allowed: boolean;
+  status: RouteStatus;
+  requirements: string[];
+  warnings: string[];
+  processing_time?: string;
+  origin_regulations: {
+    framework?: string;
+    authority?: string;
+  };
+  destination_regulations: {
+    framework?: string;
+    authority?: string;
+  };
+}
+
+export interface PermitItem {
+  name: string;
+  agency: string;
+  required: boolean | string;
+  processing_time?: string;
+  validity?: string;
+  application_system?: string;
+  url?: string;
+  description?: string;
+}
+
+export interface PackagingRequirement {
+  un_classification?: {
+    un_number: string;
+    class: string;
+    packing_group: string;
+  };
+  regulations?: string[];
+  requirements?: string[];
+  restrictions?: {
+    air_transport?: string;
+    ground_transport?: string;
+  };
+  special_requirements?: string[];
+}
+
+export interface WasteRegulatoryInfo {
+  material_classification: {
+    type: MaterialType;
+    description?: string;
+    hazard_class?: string;
+    waste_codes?: string[];
+    basel_annex?: string;
+  };
+  origin: {
+    country: string;
+    framework?: string;
+    authority?: string;
+    classification?: Record<string, any>;
+    export_requirements?: Record<string, any>;
+    key_regulations?: string[];
+    links?: Record<string, string>;
+  };
+  destination: {
+    country: string;
+    framework?: string;
+    authority?: string;
+    classification?: Record<string, any>;
+    import_requirements?: Record<string, any>;
+    links?: Record<string, string>;
+  };
+}
+
+export interface RegulatoryChecklist {
+  export_permits: PermitItem[];
+  basel_convention: Array<{
+    name: string;
+    description: string;
+    regulation?: string;
+    applies_to?: string;
+    required: boolean;
+  }>;
+  packaging: PackagingRequirement;
+  documentation: Array<{
+    name: string;
+    required: boolean | string;
+    description: string;
+  }>;
+}
+
+export interface RegulatoryRequirementsResponse {
+  checklist: RegulatoryChecklist;
+  regulations: WasteRegulatoryInfo;
+}
+
+// Extended calculation result with transport data
+export interface CalculationResultWithTransport extends CalculationResult {
+  transport_cost?: number;
+  transport_estimate?: TransportEstimate;
+  route_advisory?: RouteAdvisory;
+  transport_error?: string;
+}
+
+// Country options for dropdowns
+export const COUNTRIES = [
+  { code: 'US', name: 'United States', oecd: true },
+  { code: 'Canada', name: 'Canada', oecd: true },
+  { code: 'China', name: 'China', oecd: false },
+  { code: 'EU', name: 'European Union', oecd: true },
+  { code: 'Mexico', name: 'Mexico', oecd: true },
+  { code: 'South Korea', name: 'South Korea', oecd: true },
+] as const;
+
+export const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
+  whole_batteries: 'Whole Batteries (Assembled Cells with Electrolyte)',
+  black_mass: 'Black Mass (Electrode Scrap, Foils, Jelly Rolls, Shredded Material)',
+  processed: 'Processed Metals (Refined Products)',
+};
+
+export const TRANSPORT_MODE_LABELS: Record<TransportMode, string> = {
+  ocean: 'Ocean Freight',
+  air: 'Air Freight',
+  truck: 'Ground/Truck',
 };

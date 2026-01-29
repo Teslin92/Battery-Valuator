@@ -7,34 +7,34 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import type { CalculationResult } from '@/types/battery';
+import type { CalculationResultWithTransport } from '@/types/battery';
 
 interface CostBreakdownChartProps {
-  result: CalculationResult;
+  result: CalculationResultWithTransport;
   currency: string;
 }
 
 export function CostBreakdownChart({ result, currency }: CostBreakdownChartProps) {
   const data = [
     {
-      name: 'Material',
-      value: result.material_cost,
-      color: 'hsl(4, 70%, 35%)',
-    },
-    {
       name: 'Pre-treatment',
       value: result.total_pre_treat,
       color: 'hsl(4, 70%, 50%)',
     },
     {
-      name: 'Refining',
+      name: 'Post-treatment',
       value: result.total_refining_cost,
       color: 'hsl(4, 60%, 65%)',
     },
     {
-      name: 'Profit',
-      value: Math.max(0, result.net_profit),
-      color: 'hsl(123, 60%, 23%)',
+      name: 'Transportation',
+      value: result.transport_cost ?? 0,
+      color: 'hsl(210, 60%, 50%)',
+    },
+    {
+      name: 'Total OPEX',
+      value: result.total_opex,
+      color: 'hsl(4, 70%, 35%)',
     },
   ].filter(item => item.value > 0);
 

@@ -4,7 +4,11 @@ import type {
   MarketData, 
   Assays, 
   CalculationRequest, 
-  CalculationResult 
+  CalculationResult,
+  TransportData,
+  RouteAdvisory,
+  TransportEstimate,
+  RegulatoryRequirementsResponse
 } from '@/types/battery';
 
 // Configure base URL for Railway API
@@ -80,6 +84,81 @@ export const validateAssays = async (bmGrades: Record<string, number>): Promise<
     return response.data;
   } catch (error) {
     console.error('Failed to validate assays:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// TRANSPORT AND REGULATORY API FUNCTIONS
+// ============================================================================
+
+export interface RouteCheckResponse {
+  success: boolean;
+  data: RouteAdvisory;
+}
+
+export interface TransportEstimateResponse {
+  success: boolean;
+  data: TransportEstimate;
+  error?: string;
+  alternative?: string;
+}
+
+export interface RegulatoryRequirementsRequestResponse {
+  success: boolean;
+  data: RegulatoryRequirementsResponse;
+}
+
+export const checkTransportRoute = async (
+  origin: string,
+  destination: string,
+  materialType: string
+): Promise<RouteCheckResponse> => {
+  try {
+    const response = await api.post<RouteCheckResponse>('/api/transport/check-route', {
+      origin,
+      destination,
+      materialType,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to check transport route:', error);
+    throw error;
+  }
+};
+
+export const estimateTransportCost = async (
+  transportData: TransportData
+): Promise<TransportEstimateResponse> => {
+  try {
+    const response = await api.post<TransportEstimateResponse>('/api/transport/estimate', {
+      origin: transportData.origin,
+      destination: transportData.destination,
+      mode: transportData.mode,
+      weightKg: transportData.weightKg,
+      materialType: transportData.materialType,
+      isDDR: transportData.isDDR,
+      distanceMiles: transportData.distanceMiles,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to estimate transport cost:', error);
+    throw error;
+  }
+};
+
+export const fetchRegulatoryRequirements = async (
+  origin: string,
+  destination: string,
+  material: string
+): Promise<RegulatoryRequirementsRequestResponse> => {
+  try {
+    const response = await api.get<RegulatoryRequirementsRequestResponse>(
+      `/api/regulatory/requirements?origin=${origin}&destination=${destination}&material=${material}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch regulatory requirements:', error);
     throw error;
   }
 };

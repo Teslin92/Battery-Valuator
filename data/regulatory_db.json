@@ -1,0 +1,521 @@
+{
+  "metadata": {
+    "version": "1.0.1",
+    "last_updated": "2026-01-27",
+    "next_refresh": "2027-01-27",
+    "correction_history": [
+      {
+        "date": "2026-01-27",
+        "issue": "EU export restriction date corrected from September 1, 2026 to November 9, 2026",
+        "reason": "Official Commission Decision 2025/934 published with exact date",
+        "verified_source": "EUR-Lex Official Journal L, 2025/934, 20.5.2025"
+      }
+    ],
+    "sources": [
+      "https://www.epa.gov/hw/lithium-ion-battery-recycling-frequently-asked-questions",
+      "https://www.ecfr.gov/current/title-40/chapter-I/subchapter-I/part-262/subpart-H/section-262.83",
+      "https://www.canada.ca/en/environment-climate-change/services/managing-reducing-waste/cross-border-regulations.html",
+      "https://www.basel.int/Implementation/Wastebatteries/Overview/tabid/9415/Default.aspx",
+      "https://environment.ec.europa.eu/topics/waste-and-recycling/batteries_en",
+      "https://eur-lex.europa.eu/eli/dec_del/2025/934/oj"
+    ],
+    "confidence_ratings": {
+      "basel_convention": "99% - Primary treaty source",
+      "us_epa_rcra": "99% - Official CFR regulations",
+      "eu_regulations": "98% - Official EUR-Lex sources",
+      "canada_cepa": "95% - Official government sources",
+      "china_standards": "80% - Secondary sources (no direct standard access)",
+      "transport_rates": "75% - Industry benchmarks (use for estimates only)"
+    }
+  },
+  "basel_convention": {
+    "description": "Multilateral treaty controlling transboundary movements of hazardous wastes",
+    "pic_required": true,
+    "annexes": {
+      "annex_i": {
+        "description": "Categories of wastes to be controlled",
+        "Y23": {
+          "description": "Batteries, including lithium batteries",
+          "hazard_code": "H4.1 (flammable), H6.1 (toxic)"
+        }
+      },
+      "annex_iii": {
+        "description": "Hazard characteristics",
+        "H4.1": {
+          "description": "Flammable solids",
+          "applies_to": "Lithium metal batteries"
+        },
+        "H6.1": {
+          "description": "Toxic",
+          "applies_to": "Batteries containing hazardous constituents"
+        }
+      },
+      "annex_viii": {
+        "description": "List A - Wastes characterized as hazardous",
+        "A1160": {
+          "description": "Waste lead-acid batteries, whole or crushed",
+          "control": "Strict PIC procedure"
+        },
+        "A1170": {
+          "description": "Unsorted waste batteries excluding A1160. Waste batteries containing constituents of Annex I to extent that they exhibit characteristics of Annex III",
+          "applies_to": "Waste lithium-ion batteries, black mass if hazardous",
+          "control": "PIC procedure required",
+          "processing": "Must be recycled or disposed in environmentally sound manner"
+        },
+        "A1180": {
+          "description": "Waste electrical and electronic assemblies or scrap containing components such as accumulators and other batteries",
+          "control": "PIC procedure if contains hazardous batteries"
+        }
+      },
+      "annex_ix": {
+        "description": "List B - Wastes not covered by Article 1(1)(a) (non-hazardous)",
+        "B1010": {
+          "description": "Metal and metal-alloy wastes in metallic, non-dispersible form",
+          "applies_to": "Processed battery metals (copper, aluminum, steel casings)"
+        },
+        "B1090": {
+          "description": "Batteries, other than those specified in list A, not containing lithium, mercury, lead or cadmium",
+          "note": "Most lithium batteries do NOT qualify for B1090"
+        },
+        "B1110": {
+          "description": "Electrical and electronic assemblies (e-waste) not containing Annex I components",
+          "applies_to": "Battery packs with non-hazardous batteries only"
+        }
+      }
+    },
+    "technical_guidelines": {
+      "status": "Under development for waste batteries other than lead-acid",
+      "expected": "COP-18 (2027)",
+      "current": "Draft technical guidelines being reviewed"
+    },
+    "country_restrictions": {
+      "US": {
+        "implementation": "Via 40 CFR Part 262 Subpart H",
+        "competent_authority": "EPA (USA01)",
+        "system": "WIETS (Waste Import Export Tracking System)"
+      },
+      "Canada": {
+        "implementation": "SOR/2021-25",
+        "competent_authority": "ECCC",
+        "system": "CNMTS (Canadian Notification and Movement Tracking System)"
+      },
+      "EU": {
+        "implementation": "Regulation (EU) 2023/1542",
+        "special_restrictions": "Export of black mass to non-OECD countries prohibited from Sept 2026"
+      }
+    }
+  },
+  "us_rcra": {
+    "framework": "Resource Conservation and Recovery Act",
+    "competent_authority": "EPA",
+    "lithium_batteries": {
+      "classification": {
+        "hazardous_waste": true,
+        "waste_codes": ["D001", "D003"],
+        "D001": "Ignitable - contains flammable electrolytes",
+        "D003": "Reactive - risk of thermal runaway, fire, explosion"
+      },
+      "universal_waste": {
+        "eligible": true,
+        "regulation": "40 CFR Part 273",
+        "benefits": "Streamlined requirements for collection, transport, storage",
+        "restrictions": [
+          "Cannot breach or open cell casings",
+          "Cannot shred batteries (destination facility only)",
+          "Must send to permitted recycler or disposal facility"
+        ],
+        "handlers": {
+          "small_quantity": {
+            "threshold": "Less than 5,000 kg on-site",
+            "requirements": "Basic labeling, storage, shipment tracking"
+          },
+          "large_quantity": {
+            "threshold": "5,000 kg or more on-site",
+            "requirements": "Enhanced tracking, employee training, emergency procedures"
+          }
+        }
+      },
+      "black_mass": {
+        "universal_waste": false,
+        "description": "Filter cake-like material from shredded batteries (anode + cathode materials)",
+        "classification": "Hazardous waste if exhibits D001/D003 characteristics",
+        "storage": "Requires RCRA Part B permit before recycling",
+        "processing": "Shredding is part of exempt recycling process per 261.6(c)(1)"
+      },
+      "ddr_batteries": {
+        "description": "Damaged, Defective, or Recalled batteries",
+        "transport": {
+          "air": "Prohibited",
+          "ground": "49 CFR 173.185(f) packaging requirements apply"
+        },
+        "universal_waste": "Allowed if cell casings intact, separate storage recommended"
+      },
+      "export": {
+        "regulation": "40 CFR 262.83",
+        "notification": {
+          "system": "WIETS (Waste Import Export Tracking System)",
+          "advance": "60 days before first shipment",
+          "validity": "Up to 1 year (3 years for OECD pre-consented facilities)"
+        },
+        "aoc": {
+          "description": "Acknowledgment of Consent from EPA",
+          "required_from": ["Country of import", "Countries of transit"],
+          "processing_time": "30-90 days typical"
+        },
+        "aes_filing": {
+          "description": "Automated Export System filing",
+          "regulation": "15 CFR 30.4(b)",
+          "required_info": [
+            "EPA license code",
+            "EPA consent number",
+            "RCRA manifest tracking number",
+            "Commodity classification code",
+            "Quantity in kg or liters"
+          ]
+        },
+        "manifest": {
+          "required": true,
+          "form": "EPA Form 8700-22",
+          "submission": "Within 30 days to e-Manifest system"
+        },
+        "annual_report": {
+          "due_date": "March 1",
+          "covers": "Previous calendar year exports",
+          "contents": "Types, quantities, destinations, consent numbers"
+        }
+      }
+    },
+    "vsqg": {
+      "description": "Very Small Quantity Generator",
+      "threshold": "Less than 100 kg/month hazardous waste",
+      "requirements": "Reduced requirements, check state regulations"
+    },
+    "links": {
+      "epa_faqs": "https://www.epa.gov/hw/lithium-ion-battery-recycling-frequently-asked-questions",
+      "wiets": "https://rcrapublic.epa.gov/",
+      "export_regs": "https://www.ecfr.gov/current/title-40/part-262/subpart-H"
+    }
+  },
+  "canada_cepa": {
+    "framework": "Canadian Environmental Protection Act, 1999",
+    "regulation": "SOR/2021-25 Cross-border Movement of Hazardous Waste and Hazardous Recyclable Material Regulations",
+    "effective_date": "2021-10-31",
+    "competent_authority": "Environment and Climate Change Canada (ECCC)",
+    "permit_required": {
+      "export": true,
+      "import": true,
+      "transit": true,
+      "interprovincial": false
+    },
+    "application_process": {
+      "system": "CNMTS (Canadian Notification and Movement Tracking System)",
+      "access": "Requires GC Key and ECCC Single Window profile",
+      "advance_notice": "Submit before shipping",
+      "information_required": [
+        "Shipping facility address (one site only)",
+        "Receiving facility address (one site only)",
+        "Authorized carriers",
+        "Commercial ports of entry/exit",
+        "Waste description with classification codes",
+        "Disposal/recycling operation codes (Schedule 1)",
+        "Contract between parties",
+        "Liability insurance"
+      ]
+    },
+    "contract_requirements": {
+      "mandatory": true,
+      "parties": ["Importer", "Exporter", "Authorized facilities"],
+      "must_specify": [
+        "Alternate management if disposition cannot proceed",
+        "Return/re-export procedures",
+        "Financial guarantees if required by destination country"
+      ]
+    },
+    "movement_documents": {
+      "required": "For each shipment",
+      "unique_reference": true,
+      "parts": {
+        "part_a": "Completed by exporter/consignor",
+        "part_b": "Completed by all carriers",
+        "part_c": "Completed by receiving facility/consignee"
+      },
+      "submission": "Within 3 working days of delivery"
+    },
+    "processing_timeframes": {
+      "interim_operations": "Within 180 days of delivery",
+      "final_operations": "Within 1 year of delivery"
+    },
+    "record_retention": "5 years",
+    "enforcement": {
+      "authority": "ECCC Enforcement Officers",
+      "policy": "Compliance and Enforcement Policy for CEPA"
+    },
+    "links": {
+      "regulations": "https://laws.justice.gc.ca/eng/regulations/SOR-2021-25/",
+      "cnmts": "https://www.canada.ca/en/environment-climate-change/services/managing-reducing-waste/cross-border-regulations/cnmts-user-guide.html",
+      "guidance": "https://www.canada.ca/en/environment-climate-change/services/managing-reducing-waste/cross-border-regulations.html"
+    }
+  },
+  "eu_battery_regulation": {
+    "regulation": "Regulation (EU) 2023/1542",
+    "effective_date": "2023-08-17",
+    "scope": "All batteries placed on EU market",
+    "waste_list_amendment": {
+      "decision": "Commission Delegated Decision (EU) 2025/934",
+      "adopted": "2025-03-05",
+      "published": "2025-05-20",
+      "effective_date": "2026-11-09"
+    },
+    "black_mass_classification": {
+      "status": "Hazardous waste",
+      "waste_code": "191402* (intermediate fraction from thermal/mechanical treatment)",
+      "effective": "2026-11-09",
+      "implications": "Subject to EU Waste Shipment Regulation, Basel Convention controls"
+    },
+    "export_restrictions": {
+      "to_non_oecd": "Prohibited for hazardous battery waste including black mass",
+      "effective": "2026-11-09",
+      "legal_basis": "EU Decision 2025/934 + Basel Convention (hazardous waste to non-OECD prohibited)",
+      "exemptions": "Limited, case-by-case basis"
+    },
+    "sustainability_requirements": {
+      "carbon_footprint": "Declaration required",
+      "recycled_content": "Minimum targets for cobalt, lithium, nickel, lead",
+      "due_diligence": "Supply chain due diligence for responsible sourcing",
+      "battery_passport": "Digital product passport by 2027"
+    },
+    "collection_targets": {
+      "portable_batteries": "63% by 2027, 73% by 2030",
+      "lmt_batteries": "51% by 2028, 61% by 2031"
+    },
+    "recycling_efficiency": {
+      "lithium_recovery": "50% by 2027, 80% by 2031",
+      "cobalt_nickel_copper": "90% by 2027, 95% by 2031"
+    },
+    "epr": {
+      "description": "Extended Producer Responsibility",
+      "requirement": "Producers must finance collection, treatment, recycling"
+    },
+    "links": {
+      "regulation": "https://eur-lex.europa.eu/eli/reg/2023/1542/oj",
+      "guidance": "https://environment.ec.europa.eu/topics/waste-and-recycling/batteries_en"
+    }
+  },
+  "china_import": {
+    "framework": "General Administration of Customs (GACC)",
+    "standard": "GB/T 45203-2024",
+    "black_mass_classification": {
+      "status": "Non-waste product (industrial intermediate)",
+      "hs_code": "3824999996",
+      "requires": "Product quality certification"
+    },
+    "import_requirements": {
+      "permit": "Import license required",
+      "inspection": "Entry-exit inspection and quarantine",
+      "documentation": [
+        "Commercial invoice",
+        "Packing list",
+        "Bill of lading",
+        "Quality certificate",
+        "Non-hazardous certification (for black mass)",
+        "Country of origin certificate"
+      ]
+    },
+    "waste_batteries": {
+      "import_restricted": true,
+      "basel_pic": "Required for hazardous battery waste",
+      "competent_authority": "Ministry of Ecology and Environment (MEE)"
+    },
+    "environmental_standards": {
+      "pollution_control": "Must meet Chinese environmental standards",
+      "facility_approval": "Receiving facility must be approved by MEE"
+    },
+    "api_access": {
+      "available": true,
+      "system": "HSCIQ (Harmonized System Commodity Inquiry)",
+      "description": "Check HS code requirements and restrictions"
+    }
+  },
+  "transport_rates": {
+    "last_updated": "2026-01-27",
+    "source": "Freightos Baltic Index (FBX) baseline rates",
+    "disclaimer": "Rates are benchmarks only, actual costs vary by route, volume, carrier",
+    "ocean": {
+      "base_rate_usd_per_mt": 85,
+      "hazmat_multiplier": 1.8,
+      "typical_routes": {
+        "us_to_china": {"base": 95, "transit_days": 14},
+        "us_to_europe": {"base": 75, "transit_days": 10},
+        "canada_to_asia": {"base": 90, "transit_days": 16}
+      }
+    },
+    "air": {
+      "base_rate_usd_per_mt": 4500,
+      "hazmat_multiplier": 2.2,
+      "note": "DDR batteries prohibited from air transport"
+    },
+    "truck": {
+      "base_rate_usd_per_mile": 3.50,
+      "hazmat_multiplier": 1.5,
+      "typical_distances": {
+        "us_canada_border": 500,
+        "cross_country_us": 2500,
+        "cross_country_canada": 3000
+      }
+    }
+  },
+  "permit_requirements": {
+    "us_export": {
+      "permits": [
+        {
+          "name": "EPA Acknowledgment of Consent (AOC)",
+          "agency": "EPA",
+          "required": true,
+          "processing_time": "30-90 days",
+          "validity": "Up to 1 year (3 years for OECD pre-consented)",
+          "application": "Via WIETS",
+          "url": "https://rcrapublic.epa.gov/"
+        },
+        {
+          "name": "AES Filing",
+          "agency": "Census Bureau",
+          "required": true,
+          "processing_time": "Immediate",
+          "url": "https://www.census.gov/foreign-trade/aes/"
+        }
+      ],
+      "forms": [
+        {
+          "name": "EPA Form 8700-22 (Hazardous Waste Manifest)",
+          "required": true,
+          "submission": "Within 30 days to e-Manifest"
+        }
+      ]
+    },
+    "canada_export": {
+      "permits": [
+        {
+          "name": "ECCC Export Permit",
+          "agency": "Environment and Climate Change Canada",
+          "required": true,
+          "processing_time": "Varies by destination",
+          "application": "Via CNMTS",
+          "url": "https://ec.ss.ec.gc.ca/"
+        }
+      ],
+      "insurance": {
+        "liability_insurance": "Required per Division 7 of SOR/2021-25",
+        "purpose": "Cover accidents or incidents during transport"
+      }
+    },
+    "china_import": {
+      "permits": [
+        {
+          "name": "Import License",
+          "agency": "Ministry of Commerce (MOFCOM)",
+          "required": true,
+          "processing_time": "30-60 days"
+        },
+        {
+          "name": "MEE Approval (for waste)",
+          "agency": "Ministry of Ecology and Environment",
+          "required": "If classified as waste",
+          "processing_time": "60-90 days"
+        }
+      ]
+    },
+    "eu_import": {
+      "permits": [
+        {
+          "name": "Waste Shipment Notification",
+          "agency": "Competent authority of destination country",
+          "required": true,
+          "processing_time": "30 days",
+          "note": "Per EU Waste Shipment Regulation"
+        }
+      ]
+    }
+  },
+  "packaging_requirements": {
+    "lithium_batteries": {
+      "regulation": "49 CFR 173.185 (US DOT), IATA DGR Section 4.11",
+      "un_number": "UN3480 (lithium metal), UN3481 (contained in equipment)",
+      "class": "Class 9 Dangerous Goods",
+      "packing_group": "II",
+      "requirements": [
+        "Inner packaging prevents short circuits",
+        "Outer packaging provides cushioning",
+        "Terminals isolated (tape, plastic caps, individual bags)",
+        "Package marked with UN number and proper shipping name",
+        "Lithium battery handling label affixed",
+        "State of charge documentation"
+      ]
+    },
+    "ddr_batteries": {
+      "regulation": "49 CFR 173.185(f)",
+      "special_requirements": [
+        "Must be packaged in individual non-conductive inner packaging",
+        "Cannot be transported by air",
+        "Additional cushioning required",
+        "Warning labels indicating damaged/defective status"
+      ]
+    },
+    "black_mass": {
+      "classification": "Hazardous material (contains reactive battery residues)",
+      "packaging": [
+        "UN-approved drums or IBCs",
+        "Sealed to prevent moisture ingress",
+        "Proper labeling as hazardous waste",
+        "SDS (Safety Data Sheet) must accompany shipment"
+      ]
+    }
+  },
+  "route_feasibility": {
+    "us_to_canada": {
+      "status": "allowed",
+      "requirements": ["ECCC permit", "EPA AOC", "RCRA manifest", "DOT packaging"],
+      "processing_time": "60-90 days combined"
+    },
+    "canada_to_us": {
+      "status": "allowed",
+      "requirements": ["EPA AOC", "RCRA manifest", "ECCC movement document"],
+      "processing_time": "60-90 days"
+    },
+    "us_to_eu": {
+      "status": "allowed",
+      "requirements": ["EPA AOC", "Basel notification", "EU waste shipment consent"],
+      "processing_time": "90-120 days"
+    },
+    "us_to_china": {
+      "status": "restricted",
+      "requirements": ["EPA AOC", "Basel PIC", "China import license", "MEE approval if waste"],
+      "processing_time": "120-180 days",
+      "notes": "Black mass as product (GB/T 45203) easier than waste classification"
+    },
+    "canada_to_china": {
+      "status": "restricted",
+      "requirements": ["ECCC permit", "Basel PIC", "China import license"],
+      "processing_time": "120-180 days"
+    },
+    "eu_to_non_oecd": {
+      "status": "allowed_until_nov_2026",
+      "status_after": "blocked",
+      "reason": "EU Commission Decision 2025/934 classifies black mass as hazardous waste (191402*), prohibiting export to non-OECD per Basel Convention",
+      "effective_date": "2026-11-09",
+      "current_note": "Currently allowed but will be prohibited starting November 9, 2026",
+      "applies_to": ["Waste batteries", "Black mass (waste code 191402*)"],
+      "legal_basis": "Commission Delegated Decision (EU) 2025/934"
+    },
+    "us_to_mexico": {
+      "status": "allowed",
+      "requirements": ["EPA AOC", "Mexico SEMARNAT approval", "Basel notification"],
+      "processing_time": "60-90 days"
+    },
+    "us_to_south_korea": {
+      "status": "allowed",
+      "requirements": ["EPA AOC", "Basel PIC", "Korea MOE approval"],
+      "processing_time": "90-120 days",
+      "notes": "Strong e-waste recycling infrastructure"
+    }
+  }
+}

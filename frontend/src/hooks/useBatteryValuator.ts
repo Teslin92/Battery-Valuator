@@ -1,14 +1,17 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { fetchMarketData, parseCOA, calculateValuation } from '@/lib/api';
+import { fetchMarketData, parseCOA, calculateValuation, checkTransportRoute, estimateTransportCost, fetchRegulatoryRequirements } from '@/lib/api';
 import type { 
   Currency, 
   FormData, 
-  CalculationResult, 
+  CalculationResultWithTransport, 
   MarketData,
   FeedType,
   FEED_TYPE_YIELDS,
-  DEFAULT_PAYABLES
+  DEFAULT_PAYABLES,
+  TransportData,
+  RouteAdvisory,
+  RegulatoryRequirementsResponse
 } from '@/types/battery';
 
 const initialFormData: FormData = {
@@ -25,6 +28,7 @@ const initialFormData: FormData = {
   elecSurcharge: 150,
   // Black Mass (default) requires no pre-treatment, so shredding cost starts at 0
   shreddingCost: 0,
+  refiningEnabled: true,
   refiningOpex: 1500,
   niProduct: 'Sulphates (Battery Salt)',
   liProduct: 'Carbonate (LCE)',
@@ -55,9 +59,22 @@ const initialFormData: FormData = {
   coaText: '',
 };
 
+const initialTransportData: TransportData = {
+  origin: 'US',
+  destination: 'Canada',
+  mode: 'ocean',
+  materialType: 'black_mass',
+  isDDR: false,
+  weightKg: 1000,
+  manualOverride: false,
+};
+
 export function useBatteryValuator() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
-  const [result, setResult] = useState<CalculationResult | null>(null);
+  const [transportData, setTransportData] = useState<TransportData>(initialTransportData);
+  const [result, setResult] = useState<CalculationResultWithTransport | null>(null);
+  const [routeAdvisory, setRouteAdvisory] = useState<RouteAdvisory | null>(null);
+  const [regulatoryRequirements, setRegulatoryRequirements] = useState<RegulatoryRequirementsResponse | null>(null);
 
   // Fetch market data
   const { 
@@ -170,7 +187,7 @@ export function useBatteryValuator() {
   }, [formData.coaText, coaMutation]);
 
   const handleCalculate = useCallback(() => {
-    const request = {
+    const request: Record<string, any> = {
       currency: formData.currency,
       gross_weight: formData.grossWeight,
       feed_type: formData.feedType,
@@ -206,12 +223,94 @@ export function useBatteryValuator() {
       shredding_cost_per_ton: formData.feedType === 'Black Mass (Processed)' ? 0 : formData.shreddingCost,
       elec_surcharge: formData.hasElectrolyte ? formData.elecSurcharge : 0,
       has_electrolyte: formData.hasElectrolyte,
-      refining_opex_base: formData.refiningOpex,
+      refining_enabled: formData.refiningEnabled,
+      refining_opex_base: formData.refiningEnabled ? formData.refiningOpex : 0,
       ni_product: formData.niProduct,
       li_product: formData.liProduct,
     };
+
+    // Include transport data in calculation so it affects totals
+    // The backend will add transport_cost to total_opex and recalculate net_profit/margin
+    if (transportData.origin && transportData.destination) {
+      // For truck mode, only include if distance is provided
+      const canIncludeTransport = transportData.mode !== 'truck' || transportData.distanceMiles;
+      if (canIncludeTransport) {
+        request.transport_data = {
+          origin: transportData.origin,
+          destination: transportData.destination,
+          mode: transportData.mode,
+          material_type: transportData.materialType,
+          is_ddr: transportData.isDDR,
+          distance_miles: transportData.distanceMiles,
+          manual_override: transportData.manualOverride,
+          manual_cost: transportData.manualCost,
+        };
+      }
+    }
+
     calcMutation.mutate(request);
-  }, [formData, calcMutation]);
+  }, [formData, transportData, calcMutation]);
+
+  // Transport-related functions
+  const updateTransportData = useCallback((updates: Partial<TransportData>) => {
+    setTransportData(prev => {
+      const updated = { ...prev, ...updates };
+      // Update weight to match current gross weight
+      if (!updates.weightKg) {
+        updated.weightKg = formData.grossWeight;
+      }
+      return updated;
+    });
+  }, [formData.grossWeight]);
+
+  // Check route feasibility when origin/destination/material changes
+  useEffect(() => {
+    const checkRoute = async () => {
+      try {
+        const response = await checkTransportRoute(
+          transportData.origin,
+          transportData.destination,
+          transportData.materialType
+        );
+        if (response.success) {
+          setRouteAdvisory(response.data);
+        }
+      } catch (error) {
+        console.error('Route check failed:', error);
+      }
+    };
+
+    if (transportData.origin && transportData.destination) {
+      checkRoute();
+    }
+  }, [transportData.origin, transportData.destination, transportData.materialType]);
+
+  // Fetch regulatory requirements when route changes
+  useEffect(() => {
+    const fetchReqs = async () => {
+      try {
+        const response = await fetchRegulatoryRequirements(
+          transportData.origin,
+          transportData.destination,
+          transportData.materialType
+        );
+        if (response.success) {
+          setRegulatoryRequirements(response.data);
+        }
+      } catch (error) {
+        console.error('Regulatory requirements fetch failed:', error);
+      }
+    };
+
+    if (transportData.origin && transportData.destination) {
+      fetchReqs();
+    }
+  }, [transportData.origin, transportData.destination, transportData.materialType]);
+
+  // Update transport weight when gross weight changes
+  useEffect(() => {
+    setTransportData(prev => ({ ...prev, weightKg: formData.grossWeight }));
+  }, [formData.grossWeight]);
 
   const recoverableBlackMass = (formData.grossWeight * formData.yieldPct / 100);
 
@@ -232,5 +331,10 @@ export function useBatteryValuator() {
     isCalculating: calcMutation.isPending,
     calculationError: calcMutation.error,
     recoverableBlackMass,
+    // Transport and regulatory
+    transportData,
+    updateTransportData,
+    routeAdvisory,
+    regulatoryRequirements,
   };
 }

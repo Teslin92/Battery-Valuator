@@ -164,6 +164,65 @@ def calculate_valuation():
 
         # Calculate valuation
         results = backend.calculate_valuation(input_params)
+        
+        # Add transport data if provided
+        transport_data = input_params.get('transport_data')
+        if transport_data:
+            try:
+                # Check if user provided a manual override cost
+                manual_override = transport_data.get('manual_override', False)
+                manual_cost = transport_data.get('manual_cost')
+                
+                if manual_override and manual_cost is not None:
+                    # Use the manually entered cost
+                    transport_cost = float(manual_cost)
+                    transport_estimate = {
+                        'estimated_cost': transport_cost,
+                        'mode': transport_data.get('mode', 'ocean'),
+                        'weight_kg': input_params['gross_weight'],
+                        'note': 'Manual override - user-provided cost',
+                        'manual_override': True
+                    }
+                else:
+                    # Get transport estimate from backend
+                    transport_estimate = backend.get_transport_estimate(
+                        origin=transport_data.get('origin', 'US'),
+                        destination=transport_data.get('destination', 'Canada'),
+                        mode=transport_data.get('mode', 'ocean'),
+                        weight_kg=input_params['gross_weight'],
+                        material_type=transport_data.get('material_type', 'black_mass'),
+                        is_ddr=transport_data.get('is_ddr', False),
+                        distance_miles=transport_data.get('distance_miles')
+                    )
+                    transport_cost = transport_estimate.get('estimated_cost', 0)
+                
+                # Check route feasibility
+                route_advisory = backend.check_route_feasibility(
+                    origin=transport_data.get('origin', 'US'),
+                    destination=transport_data.get('destination', 'Canada'),
+                    material_type=transport_data.get('material_type', 'black_mass')
+                )
+                
+                # Add transport cost to total OPEX
+                results['transport_cost'] = transport_cost
+                results['total_opex'] = results['total_opex'] + transport_cost
+                
+                # Recalculate profit and margin
+                results['net_profit'] = results['total_revenue'] - results['material_cost'] - results['total_opex']
+                results['margin_pct'] = (results['net_profit'] / results['total_revenue']) * 100 if results['total_revenue'] > 0 else 0
+                
+                # Add transport and regulatory info
+                results['transport_estimate'] = transport_estimate
+                results['route_advisory'] = route_advisory
+                
+                # Update cost breakdown
+                if 'cost_breakdown' not in results:
+                    results['cost_breakdown'] = {}
+                results['cost_breakdown']['transport'] = transport_cost
+                
+            except Exception as e:
+                logger.error(f"Error calculating transport costs: {str(e)}")
+                results['transport_error'] = str(e)
 
         return jsonify({
             'success': True,
@@ -220,6 +279,284 @@ def validate_assays():
             'success': False,
             'error': str(e)
         }), 500
+
+# ============================================================================
+# TRANSPORT AND REGULATORY ENDPOINTS
+# ============================================================================
+
+@app.route('/api/transport/check-route', methods=['POST'])
+def check_transport_route():
+    """
+    Check feasibility of transport route based on regulations.
+    
+    Request body:
+        {
+            "origin": "US",
+            "destination": "Canada",
+            "materialType": "black_mass"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "allowed": true,
+                "status": "allowed",
+                "requirements": ["ECCC permit", "EPA AOC"],
+                "warnings": [],
+                "processing_time": "60-90 days"
+            }
+        }
+    """
+    try:
+        data = request.get_json()
+        origin = data.get('origin')
+        destination = data.get('destination')
+        material_type = data.get('materialType', 'black_mass')
+        
+        if not origin or not destination:
+            return jsonify({
+                'success': False,
+                'error': 'origin and destination are required'
+            }), 400
+        
+        result = backend.check_route_feasibility(origin, destination, material_type)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+    except Exception as e:
+        logger.error(f"Route check error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/transport/estimate', methods=['POST'])
+def get_transport_estimate():
+    """
+    Get transportation cost estimate.
+    
+    Request body:
+        {
+            "origin": "US",
+            "destination": "China",
+            "mode": "ocean",
+            "weightKg": 1000,
+            "materialType": "black_mass",
+            "isDDR": false,
+            "distanceMiles": null  // required for truck mode
+        }
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "estimated_cost": 153.00,
+                "mode": "ocean",
+                "breakdown": {...}
+            }
+        }
+    """
+    try:
+        data = request.get_json()
+        origin = data.get('origin')
+        destination = data.get('destination')
+        mode = data.get('mode', 'ocean')
+        weight_kg = float(data.get('weightKg', 0))
+        material_type = data.get('materialType', 'black_mass')
+        is_ddr = data.get('isDDR', False)
+        distance_miles = data.get('distanceMiles')
+        
+        if not origin or not destination:
+            return jsonify({
+                'success': False,
+                'error': 'origin and destination are required'
+            }), 400
+        
+        if weight_kg <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'weightKg must be greater than 0'
+            }), 400
+        
+        result = backend.get_transport_estimate(
+            origin, destination, mode, weight_kg,
+            material_type, is_ddr, distance_miles
+        )
+        
+        # Check for errors in result
+        if 'error' in result:
+            return jsonify({
+                'success': False,
+                'error': result['error'],
+                'alternative': result.get('alternative')
+            }), 400
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+    except Exception as e:
+        logger.error(f"Transport estimate error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/regulatory/requirements', methods=['GET'])
+def get_regulatory_requirements():
+    """
+    Get regulatory requirements for a specific route and material.
+    
+    Query params:
+        origin: Origin country code
+        destination: Destination country code
+        material: Material type (whole_batteries, black_mass, processed)
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "permits": [...],
+                "basel_requirements": [...],
+                "packaging": {...},
+                "documentation": [...]
+            }
+        }
+    """
+    try:
+        origin = request.args.get('origin')
+        destination = request.args.get('destination')
+        material = request.args.get('material', 'black_mass')
+        
+        if not origin or not destination:
+            return jsonify({
+                'success': False,
+                'error': 'origin and destination query parameters are required'
+            }), 400
+        
+        # Get permit checklist
+        checklist = backend.get_permit_checklist(origin, destination, material)
+        
+        # Get regulatory details
+        regulations = backend.get_waste_regulations(origin, destination, material)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'checklist': checklist,
+                'regulations': regulations
+            }
+        })
+    except Exception as e:
+        logger.error(f"Regulatory requirements error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/regulatory/status', methods=['GET'])
+def get_regulatory_database_status():
+    """
+    Get status of regulatory database (last updated, freshness).
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "last_updated": "2026-01-27",
+                "next_refresh": "2027-01-27",
+                "age_days": 0,
+                "status": "fresh",
+                "sources": [...]
+            }
+        }
+    """
+    try:
+        from logistics_data import get_full_database
+        import sys
+        import os
+        
+        # Import regulatory_refresh to check freshness
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import regulatory_refresh
+        
+        db = get_full_database()
+        metadata = db.get('metadata', {})
+        
+        freshness = regulatory_refresh.check_database_freshness()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'last_updated': metadata.get('last_updated'),
+                'next_refresh': metadata.get('next_refresh'),
+                'version': metadata.get('version'),
+                'sources': metadata.get('sources', []),
+                'freshness': freshness
+            }
+        })
+    except Exception as e:
+        logger.error(f"Database status error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/admin/refresh-regulatory', methods=['POST'])
+def trigger_regulatory_refresh():
+    """
+    Manually trigger regulatory database refresh (admin only).
+    
+    Request body:
+        {
+            "source": "epa_faqs"  // optional, refresh specific source only
+        }
+    
+    Response:
+        {
+            "success": true,
+            "message": "Refresh instructions returned",
+            "instructions": "..."
+        }
+    """
+    try:
+        # For security, this should check authentication in production
+        # For now, just return refresh instructions
+        
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import regulatory_refresh
+        
+        # Get manual refresh instructions
+        from io import StringIO
+        import contextlib
+        
+        f = StringIO()
+        with contextlib.redirect_stdout(f):
+            regulatory_refresh.manual_refresh_instructions()
+        instructions = f.getvalue()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Manual refresh required - see instructions',
+            'instructions': instructions,
+            'note': 'Use Cursor with CallMcpTool and firecrawl_scrape to refresh data'
+        })
+    except Exception as e:
+        logger.error(f"Refresh trigger error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 if __name__ == '__main__':
     # For local development
